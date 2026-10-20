@@ -26,7 +26,7 @@ jobs:
         channel: 'stable'
         
     - name: Generate Android project structure
-      run: flutter create --platforms=android .
+      run: flutter create --platforms=android --project-name football_manager_br .
       
     - name: Install dependencies
       run: flutter pub get
