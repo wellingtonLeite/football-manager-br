@@ -30,7 +30,7 @@ class ClubShield extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = _kClubColors[shortName] ??
+    final List<Color> colors = _kClubColors[shortName] ??
         const [Color(0xFF616161), Color(0xFF9E9E9E)];
     return SizedBox(
       width: size,
@@ -115,5 +115,7 @@ class _ShieldPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _ShieldPainter old) =>
-      old.label != label || old.primary != primary || old.secondary != secondary;
+      old.label != label ||
+      old.primary != primary ||
+      old.secondary != secondary;
 }
