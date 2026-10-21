@@ -224,8 +224,6 @@ class GameState extends ChangeNotifier {
     saveToDisk();
   }
 
-  // ---------- PERSISTÊNCIA ----------
-
   Future<void> saveToDisk() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -253,10 +251,10 @@ class GameState extends ChangeNotifier {
       final gs = GameState();
       
       gs.teams = (map['teams'] as List)
-          .map((tJson) => Team.fromJson(tJson))
+          .map((tJson) => Team.fromJson(tJson as Map<String, dynamic>))
           .toList();
       gs.matches = (map['matches'] as List)
-          .map((mJson) => Match.fromJson(mJson))
+          .map((mJson) => Match.fromJson(mJson as Map<String, dynamic>))
           .toList();
       gs.currentRound = map['currentRound'];
       gs.seasonYear = map['seasonYear'];
@@ -281,8 +279,6 @@ class GameState extends ChangeNotifier {
     started = false;
     notifyListeners();
   }
-
-  // ---------- IMPRENSA ----------
 
   List<PressConference> generatePressConference() {
     final t = userTeam!;
@@ -402,8 +398,6 @@ class GameState extends ChangeNotifier {
     }
     notifyListeners();
   }
-
-  // ---------- SIMULAÇÃO E CALENDÁRIO ----------
 
   List<double> _tacticMods(Tactic t) {
     switch (t) {
