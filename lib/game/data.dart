@@ -244,7 +244,7 @@ Team _buildTeam(ClubInfo c, Random rng) {
       final name =
           '${kFirstNames[rng.nextInt(kFirstNames.length)]} ${kLastNames[rng.nextInt(kLastNames.length)]}';
       final age = 18 + rng.nextInt(17);
-      final overall = (base + rng.nextInt(13) - 6).clamp(55, 92);
+      final overall = (base + rng.nextInt(13) - 6).clamp(55, 92).toInt();
       squad.add(Player(
         id: '${tid}_p$n',
         name: name,
