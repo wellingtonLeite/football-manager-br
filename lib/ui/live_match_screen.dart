@@ -352,156 +352,159 @@ class _LiveMatchScreenState extends State<LiveMatchScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text('Rodada ${match.round} — AO VIVO'),
-        backgroundColor: _kGreen,
-        actions: [
-          IconButton(
-            icon: Icon(audio.muted ? Icons.volume_off : Icons.volume_up),
-            onPressed: audio.toggleMute,
-          ),
-          IconButton(
-            icon: const Icon(Icons.swap_horiz),
-            tooltip: 'Substituição',
-            onPressed: finished ? null : _openSubSheet,
-          ),
-          Padding(
-            padding: const EdgeInsets.only(right: 12),
-            child: Center(
-              child: Text('$subsUsed/$maxSubs',
-                  style: const TextStyle(color: Colors.white70)),
+    return PopScope(
+      canPop: finished,
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text('Rodada ${match.round} — AO VIVO'),
+          backgroundColor: _kGreen,
+          actions: [
+            IconButton(
+              icon: Icon(audio.muted ? Icons.volume_off : Icons.volume_up),
+              onPressed: audio.toggleMute,
             ),
-          ),
-        ],
-      ),
-      body: Column(
-        children: [
-          _scoreboard(),
-          if (halftime && !finished) _halftimePanel() else _tacticBar(),
-          const Divider(height: 1),
-          Expanded(
-            child: feed.isEmpty
-                ? const Center(
-                    child: Text(
-                      'A bola vai rolar... ⚽',
-                      style: TextStyle(color: Colors.white70),
+            IconButton(
+              icon: const Icon(Icons.swap_horiz),
+              tooltip: 'Substituição',
+              onPressed: finished ? null : _openSubSheet,
+            ),
+            Padding(
+              padding: const EdgeInsets.only(right: 12),
+              child: Center(
+                child: Text('$subsUsed/$maxSubs',
+                    style: const TextStyle(color: Colors.white70)),
+              ),
+            ),
+          ],
+        ),
+        body: Column(
+          children: [
+            _scoreboard(),
+            if (halftime && !finished) _halftimePanel() else _tacticBar(),
+            const Divider(height: 1),
+            Expanded(
+              child: feed.isEmpty
+                  ? const Center(
+                      child: Text(
+                        'A bola vai rolar... ⚽',
+                        style: TextStyle(color: Colors.white70),
+                      ),
+                    )
+                  : ListView.builder(
+                      itemCount: feed.length,
+                      itemBuilder: (context, i) {
+                        final e = feed[i];
+                        return ListTile(
+                          dense: true,
+                          leading: CircleAvatar(
+                            radius: 14,
+                            backgroundColor: e.type == 'GOAL'
+                                ? Colors.green
+                                : Colors.grey.shade800,
+                            child: Text(
+                              "${e.minute}'",
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                          title: Text(
+                            e.text,
+                            style: TextStyle(
+                              color: e.type == 'GOAL'
+                                  ? Colors.greenAccent
+                                  : Colors.white70,
+                              fontWeight:
+                                  e.type == 'GOAL' ? FontWeight.bold : null,
+                            ),
+                          ),
+                        );
+                      },
                     ),
-                  )
-                : ListView.builder(
-                    itemCount: feed.length,
-                    itemBuilder: (context, i) {
-                      final e = feed[i];
-                      return ListTile(
-                        dense: true,
-                        leading: CircleAvatar(
-                          radius: 14,
-                          backgroundColor: e.type == 'GOAL'
-                              ? Colors.green
-                              : Colors.grey.shade800,
-                          child: Text(
-                            "${e.minute}'",
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 10,
+            ),
+            SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: finished
+                    ? SizedBox(
+                        width: double.infinity,
+                        height: 52,
+                        child: ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.orange,
+                            foregroundColor: Colors.white,
+                          ),
+                          onPressed: () {
+                            audio.playButton();
+                            showDialog(
+                              context: context,
+                              builder: (dlg) => AlertDialog(
+                                backgroundColor: const Color(0xFF263238),
+                                title: const Text('📈 Pós-Jogo',
+                                    style: TextStyle(color: Colors.white)),
+                                content: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Placar: ${home.shortName} $hg x $ag ${away.shortName}',
+                                      style: const TextStyle(color: Colors.white),
+                                    ),
+                                    const SizedBox(height: 8),
+                                    if (growthMsgs.isEmpty)
+                                      const Text(
+                                        'Sem evoluções desta vez. XP acumulado!',
+                                        style: TextStyle(color: Colors.white70),
+                                      )
+                                    else
+                                      for (final m in growthMsgs)
+                                        Text('⬆️ $m',
+                                            style: const TextStyle(
+                                                color: Colors.greenAccent)),
+                                    const SizedBox(height: 8),
+                                    const Text(
+                                      '⚡ Titulares: -25 de energia (recupera na próxima rodada).',
+                                      style: TextStyle(
+                                          color: Colors.white60, fontSize: 12),
+                                    ),
+                                  ],
+                                ),
+                                actions: [
+                                  TextButton(
+                                    onPressed: () {
+                                      audio.playButton();
+                                      Navigator.pop(dlg);
+                                      Navigator.pop(context);
+                                    },
+                                    child: const Text('Continuar'),
+                                  ),
+                                ],
+                              ),
+                            );
+                          },
+                          child: const Text(
+                            'FIM DE JOGO → Continuar',
+                            style: TextStyle(
+                              fontSize: 16,
                               fontWeight: FontWeight.bold,
                             ),
                           ),
                         ),
-                        title: Text(
-                          e.text,
-                          style: TextStyle(
-                            color: e.type == 'GOAL'
-                                ? Colors.greenAccent
-                                : Colors.white70,
-                            fontWeight:
-                                e.type == 'GOAL' ? FontWeight.bold : null,
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-          ),
-          SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: finished
-                  ? SizedBox(
-                      width: double.infinity,
-                      height: 52,
-                      child: ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.orange,
-                          foregroundColor: Colors.white,
-                        ),
-                        onPressed: () {
-                          audio.playButton();
-                          showDialog(
-                            context: context,
-                            builder: (dlg) => AlertDialog(
-                              backgroundColor: const Color(0xFF263238),
-                              title: const Text('📈 Pós-Jogo',
-                                  style: TextStyle(color: Colors.white)),
-                              content: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    'Placar: ${home.shortName} $hg x $ag ${away.shortName}',
-                                    style: const TextStyle(color: Colors.white),
-                                  ),
-                                  const SizedBox(height: 8),
-                                  if (growthMsgs.isEmpty)
-                                    const Text(
-                                      'Sem evoluções desta vez. XP acumulado!',
-                                      style: TextStyle(color: Colors.white70),
-                                    )
-                                  else
-                                    for (final m in growthMsgs)
-                                      Text('⬆️ $m',
-                                          style: const TextStyle(
-                                              color: Colors.greenAccent)),
-                                  const SizedBox(height: 8),
-                                  const Text(
-                                    '⚡ Titulares: -25 de energia (recupera na próxima rodada).',
-                                    style: TextStyle(
-                                        color: Colors.white60, fontSize: 12),
-                                  ),
-                                ],
-                              ),
-                              actions: [
-                                TextButton(
-                                  onPressed: () {
-                                    audio.playButton();
-                                    Navigator.pop(dlg);
-                                    Navigator.pop(context);
-                                  },
-                                  child: const Text('Continuar'),
-                                ),
-                              ],
-                            ),
-                          );
-                        },
-                        child: const Text(
-                          'FIM DE JOGO → Continuar',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                          ),
+                      )
+                    : Text(
+                        kTacticDesc[userTactic] ?? '',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          color: Colors.white60,
+                          fontSize: 12,
                         ),
                       ),
-                    )
-                  : Text(
-                      kTacticDesc[userTactic] ?? '',
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        color: Colors.white60,
-                        fontSize: 12,
-                      ),
-                    ),
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
