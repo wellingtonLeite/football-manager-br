@@ -12,7 +12,7 @@ class ClubInfo {
       this.coach, this.stars);
 }
 
-// Série A 2026 (base: acesso/rebaixamento confirmados em dez/2025)
+// Série A 2026 (base: acessos/rebaixamentos confirmados em dez/2025)
 const List<ClubInfo> kClubs = [
   ClubInfo('Flamengo', 'FLA', 'RJ', 'Maracanã', 'Filipe Luís', 5),
   ClubInfo('Palmeiras', 'PAL', 'SP', 'Allianz Parque', 'Abel Ferreira', 5),
@@ -216,9 +216,9 @@ int baseOverallForStars(int stars) {
 }
 
 Team _buildTeam(ClubInfo c, Random rng) {
-  final base = baseOverallForStars(c.stars);
-  final stars = kStars[c.shortName] ?? const <Star>[];
-  final tid = c.shortName.toLowerCase();
+  final int base = baseOverallForStars(c.stars);
+  final List<Star> stars = kStars[c.shortName] ?? const <Star>[];
+  final String tid = c.shortName.toLowerCase();
   final List<Player> squad = [];
   int n = 1;
 
@@ -233,18 +233,25 @@ Team _buildTeam(ClubInfo c, Random rng) {
     n++;
   }
 
-  const targets = {'GOL': 2, 'ZAG': 3, 'LAT': 2, 'VOL': 3, 'MEI': 4, 'ATA': 4};
-  final counts = <String, int>{};
+  const Map<String, int> targets = {
+    'GOL': 2,
+    'ZAG': 3,
+    'LAT': 2,
+    'VOL': 3,
+    'MEI': 4,
+    'ATA': 4,
+  };
+  final Map<String, int> counts = {};
   for (final s in stars) {
     counts[s.position] = (counts[s.position] ?? 0) + 1;
   }
   targets.forEach((pos, target) {
-    final have = counts[pos] ?? 0;
+    final int have = counts[pos] ?? 0;
     for (int i = 0; i < target - have; i++) {
-      final name =
+      final String name =
           '${kFirstNames[rng.nextInt(kFirstNames.length)]} ${kLastNames[rng.nextInt(kLastNames.length)]}';
-      final age = 18 + rng.nextInt(17);
-      final overall = (base + rng.nextInt(13) - 6).clamp(55, 92).toInt();
+      final int age = 18 + rng.nextInt(17);
+      final int overall = (base + rng.nextInt(13) - 6).clamp(55, 92).toInt();
       squad.add(Player(
         id: '${tid}_p$n',
         name: name,
