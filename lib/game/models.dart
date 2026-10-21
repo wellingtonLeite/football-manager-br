@@ -191,7 +191,7 @@ class Team {
       coach: json['coach'],
       stars: json['stars'],
       baseOverall: json['baseOverall'],
-      squad: (json['squad'] as List).map((p) => Player.fromJson(p)).toList(),
+      squad: (json['squad'] as List).map((p) => Player.fromJson(p as Map<String, dynamic>)).toList(),
     );
     t.startingIds = List<String>.from(json['startingIds'] ?? []);
     t.points = json['points'] ?? 0;
