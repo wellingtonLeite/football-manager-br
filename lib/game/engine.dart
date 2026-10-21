@@ -120,6 +120,8 @@ class GameState extends ChangeNotifier {
     final aGa = userIsHome ? hg : ag;
     final msgs = _applyEffects(uTeam, userOnPitch, uGf, uGa, userScorerIds);
     _applyEffects(aTeam, aiOnPitch, aGf, aGa, aiScorerIds);
+    _updateFanMorale(uTeam, uGf, uGa);
+    _updatePressMorale(uTeam, uGf, uGa);
     final homeTeam = teams.firstWhere((t) => t.id == m.homeId);
     final awayTeam = teams.firstWhere((t) => t.id == m.awayId);
     m.homeGoals = hg;
@@ -127,6 +129,30 @@ class GameState extends ChangeNotifier {
     _applyResult(homeTeam, awayTeam, hg, ag);
     notifyListeners();
     return msgs;
+  }
+
+  void _updateFanMorale(Team t, int gf, int ga) {
+    final won = gf > ga;
+    final drew = gf == ga;
+    int change = 0;
+    if (won) change = 10;
+    if (drew) change = 2;
+    if (!won && !drew) change = -8;
+    if (gf >= 3) change += 5;
+    if (ga >= 3) change -= 5;
+    t.fanMorale = (t.fanMorale + change).clamp(0, 100).toInt();
+  }
+
+  void _updatePressMorale(Team t, int gf, int ga) {
+    final won = gf > ga;
+    final drew = gf == ga;
+    int change = 0;
+    if (won) change = 8;
+    if (drew) change = 1;
+    if (!won && !drew) change = -10;
+    if (userPosition <= 4) change += 3;
+    if (userPosition >= 17) change -= 5;
+    t.pressMorale = (t.pressMorale + change).clamp(0, 100).toInt();
   }
 
   List<String> _applyEffects(
@@ -170,6 +196,8 @@ class GameState extends ChangeNotifier {
       t.goalsFor = 0;
       t.goalsAgainst = 0;
       t.played = 0;
+      t.fanMorale = 70;
+      t.pressMorale = 70;
       for (final p in t.squad) {
         p.age++;
         if (p.age >= 34) {
@@ -304,6 +332,130 @@ class GameState extends ChangeNotifier {
     pool.sort((a, b) => b.overall.compareTo(a.overall));
     final n = pool.length < 5 ? pool.length : 5;
     return pool[_rng.nextInt(n)];
+  }
+
+  // ---------- IMPRENSA ----------
+
+  List<PressConference> generatePressConference() {
+    final t = userTeam!;
+    final pos = userPosition;
+    final lastMatch = matches.lastWhere((m) =>
+        m.isPlayed && (m.homeId == t.id || m.awayId == t.id));
+    final userIsHome = lastMatch.homeId == t.id;
+    final gf = userIsHome ? lastMatch.homeGoals! : lastMatch.awayGoals!;
+    final ga = userIsHome ? lastMatch.awayGoals! : lastMatch.homeGoals!;
+    final won = gf > ga;
+    final drew = gf == ga;
+
+    final questions = <PressConference>[];
+
+    // Pergunta sobre desempenho
+    if (won) {
+      questions.add(PressConference(
+        question: 'Vitória importante! Como avalia a atuação da equipe?',
+        answers: [
+          'Fomos superiores do início ao fim, merecemos os 3 pontos.',
+          'Foi uma partida difícil, mas o time mostrou caráter.',
+          'Precisamos melhorar, não jogamos bem.',
+        ],
+        correctIndex: 0,
+        correctFeedback: 'Imprensa satisfeita com sua confiança! (+5 moral)',
+        wrongFeedback: 'Imprensa estranha sua modéstia. (-3 moral)',
+      ));
+    } else if (drew) {
+      questions.add(PressConference(
+        question: 'Empate em casa. O que faltou para vencer?',
+        answers: [
+          'Faltou eficiência no ataque, criamos chances mas não convertemos.',
+          'O adversário jogou muito bem, parabéns a eles.',
+          'Foi um resultado justo, aceitável.',
+        ],
+        correctIndex: 0,
+        correctFeedback: 'Análise técnica respeitada. (+3 moral)',
+        wrongFeedback: 'Imprensa critica falta de autocrítica. (-4 moral)',
+      ));
+    } else {
+      questions.add(PressConference(
+        question: 'Derrota preocupante. Qual sua explicação?',
+        answers: [
+          'Assumo a responsabilidade. Precisamos trabalhar mais.',
+          'A arbitragem prejudicou o time.',
+          'Os jogadores não se empenharam.',
+        ],
+        correctIndex: 0,
+        correctFeedback: 'Postura profissional elogiada. (+2 moral)',
+        wrongFeedback: 'Desculpas não colam. Imprensa detona. (-8 moral)',
+      ));
+    }
+
+    // Pergunta sobre posição na tabela
+    if (pos <= 4) {
+      questions.add(PressConference(
+        question: 'Time no G4. Acha que briga pelo título?',
+        answers: [
+          'Estamos focados jogo a jogo, mas temos qualidade para isso.',
+          'Sim, somos favoritos ao título.',
+          'Não, nosso objetivo é só não cair.',
+        ],
+        correctIndex: 0,
+        correctFeedback: 'Humildade e ambição: imprensa aprova. (+4 moral)',
+        wrongFeedback: 'Arrogância ou falta de visão. (-5 moral)',
+      ));
+    } else if (pos >= 17) {
+      questions.add(PressConference(
+        question: 'Time na zona de rebaixamento. Há risco de queda?',
+        answers: [
+          'Sabemos da situação, mas confiamos na virada.',
+          'Não, vamos escapar facilmente.',
+          'Sim, o risco é real e grande.',
+        ],
+        correctIndex: 0,
+        correctFeedback: 'Realismo e esperança. (+3 moral)',
+        wrongFeedback: 'Negação ou pessimismo. Imprensa pressiona. (-6 moral)',
+      ));
+    }
+
+    // Pergunta sobre torcida
+    if (t.fanMorale <= 40) {
+      questions.add(PressConference(
+        question: 'Torcida protestando. Como lida com a pressão?',
+        answers: [
+          'Entendo a frustração. Precisamos dar alegrias a eles.',
+          'A torcida tem que apoiar sempre, não só quando vence.',
+          'Não me importo com protestos.',
+        ],
+        correctIndex: 0,
+        correctFeedback: 'Empatia com torcida. (+5 moral da torcida)',
+        wrongFeedback: 'Desrespeito com torcida. (-10 moral da torcida)',
+      ));
+    }
+
+    return questions;
+  }
+
+  void applyPressAnswer(int questionIndex, int answerIndex) {
+    final t = userTeam!;
+    final questions = generatePressConference();
+    if (questionIndex >= questions.length) return;
+    final q = questions[questionIndex];
+    if (answerIndex == q.correctIndex) {
+      t.pressMorale = (t.pressMorale + 5).clamp(0, 100).toInt();
+      if (q.correctFeedback.contains('torcida')) {
+        t.fanMorale = (t.fanMorale + 5).clamp(0, 100).toInt();
+      }
+    } else {
+      final penalty = q.wrongFeedback.contains('10') ? 10 :
+                      q.wrongFeedback.contains('8') ? 8 :
+                      q.wrongFeedback.contains('6') ? 6 :
+                      q.wrongFeedback.contains('5') ? 5 :
+                      q.wrongFeedback.contains('4') ? 4 : 3;
+      if (q.wrongFeedback.contains('torcida')) {
+        t.fanMorale = (t.fanMorale - penalty).clamp(0, 100).toInt();
+      } else {
+        t.pressMorale = (t.pressMorale - penalty).clamp(0, 100).toInt();
+      }
+    }
+    notifyListeners();
   }
 
   // ---------- CALENDÁRIO ----------
