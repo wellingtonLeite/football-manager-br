@@ -1,8 +1,24 @@
+enum Tactic { retranca, neutro, ofensivo, tudoOuNada }
+
+class MatchEvent {
+  final int minute;
+  final String type;
+  final String teamId;
+  final String text;
+
+  MatchEvent({
+    required this.minute,
+    required this.type,
+    required this.teamId,
+    required this.text,
+  });
+}
+
 class Player {
   final String id;
   final String name;
   final String position;
-  final int age;
+  int age;
   final int overall;
 
   Player({
