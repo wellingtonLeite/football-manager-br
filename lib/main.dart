@@ -2,16 +2,31 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'game/engine.dart';
 import 'ui/screens.dart';
+import 'ui/audio_service.dart';
 
-void main() => runApp(const FootballManagerApp());
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  
+  // Tenta carregar o jogo salvo antes de iniciar a UI
+  final savedGame = await GameState.loadFromDisk();
+  
+  runApp(FootballManagerApp(initialState: savedGame));
+}
 
 class FootballManagerApp extends StatelessWidget {
-  const FootballManagerApp({super.key});
+  final GameState? initialState;
+
+  const FootballManagerApp({super.key, this.initialState});
 
   @override
   Widget build(BuildContext context) {
-    return ChangeNotifierProvider(
-      create: (_) => GameState(),
+    return MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => AudioService()),
+        ChangeNotifierProvider<GameState>(
+          create: (_) => initialState ?? GameState(),
+        ),
+      ],
       child: MaterialApp(
         title: 'Football Manager BR',
         debugShowCheckedModeBanner: false,
@@ -33,7 +48,12 @@ class RootScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final started = context.watch<GameState>().started;
-    return started ? const HomeScreen() : const TeamSelectScreen();
+    final game = context.watch<GameState>();
+    
+    if (!game.started) {
+      return const WelcomeScreen();
+    }
+    
+    return const HomeScreen();
   }
 }
