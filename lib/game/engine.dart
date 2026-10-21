@@ -39,12 +39,34 @@ class GameState extends ChangeNotifier {
 
   void startGame(String teamId) {
     teams = createLeague();
+    for (final t in teams) {
+      t.startingIds = autoLineup(t);
+    }
     userTeamId = teamId;
     matches = _generateSchedule();
     currentRound = 1;
     seasonYear = 2026;
     started = true;
     notifyListeners();
+  }
+
+  List<String> autoLineup(Team t) {
+    const quota = {'GOL': 1, 'ZAG': 2, 'LAT': 2, 'VOL': 2, 'MEI': 2, 'ATA': 2};
+    final ids = <String>[];
+    final pool = List<Player>.from(t.squad);
+    quota.forEach((pos, n) {
+      final cands = pool.where((p) => p.position == pos).toList()
+        ..sort((a, b) => b.overall.compareTo(a.overall));
+      for (int i = 0; i < n && i < cands.length; i++) {
+        ids.add(cands[i].id);
+        pool.remove(cands[i]);
+      }
+    });
+    while (ids.length < 11 && pool.isNotEmpty) {
+      pool.sort((a, b) => b.overall.compareTo(a.overall));
+      ids.add(pool.removeAt(0).id);
+    }
+    return ids;
   }
 
   List<Match> get currentRoundMatches =>
@@ -64,31 +86,77 @@ class GameState extends ChangeNotifier {
 
   void simulateOtherMatches() {
     for (final m in currentRoundMatches) {
+      if (m.isPlayed) continue;
       if (m.homeId == userTeamId || m.awayId == userTeamId) continue;
       final home = teams.firstWhere((t) => t.id == m.homeId);
       final away = teams.firstWhere((t) => t.id == m.awayId);
-      final score = _simulateScore(home, away, Tactic.neutro, Tactic.neutro);
+      final score = _simulateScore(home, away);
       m.homeGoals = score[0];
       m.awayGoals = score[1];
       _applyResult(home, away, score[0], score[1]);
+      _applyEffects(home, home.startingPlayers, score[0], score[1], const []);
+      _applyEffects(away, away.startingPlayers, score[1], score[0], const []);
     }
     notifyListeners();
   }
 
-  void applyUserMatchResult(int hg, int ag) {
+  List<String> finishUserMatch(
+    int hg,
+    int ag,
+    List<Player> userOnPitch,
+    List<String> userScorerIds,
+    List<Player> aiOnPitch,
+    List<String> aiScorerIds,
+  ) {
     final m = userMatchCurrent;
-    if (m == null) return;
-    final home = teams.firstWhere((t) => t.id == m.homeId);
-    final away = teams.firstWhere((t) => t.id == m.awayId);
+    if (m == null) return const [];
+    final userIsHome = m.homeId == userTeamId;
+    final uTeam = userTeam!;
+    final aTeam =
+        teams.firstWhere((t) => t.id == (userIsHome ? m.awayId : m.homeId));
+    final uGf = userIsHome ? hg : ag;
+    final uGa = userIsHome ? ag : hg;
+    final aGf = userIsHome ? ag : hg;
+    final aGa = userIsHome ? hg : ag;
+    final msgs = _applyEffects(uTeam, userOnPitch, uGf, uGa, userScorerIds);
+    _applyEffects(aTeam, aiOnPitch, aGf, aGa, aiScorerIds);
+    final homeTeam = teams.firstWhere((t) => t.id == m.homeId);
+    final awayTeam = teams.firstWhere((t) => t.id == m.awayId);
     m.homeGoals = hg;
     m.awayGoals = ag;
-    _applyResult(home, away, hg, ag);
+    _applyResult(homeTeam, awayTeam, hg, ag);
     notifyListeners();
+    return msgs;
+  }
+
+  List<String> _applyEffects(
+    Team t,
+    List<Player> onPitch,
+    int gf,
+    int ga,
+    List<String> scorerIds,
+  ) {
+    final won = gf > ga;
+    final drew = gf == ga;
+    final msgs = <String>[];
+    for (final p in onPitch) {
+      p.energy = (p.energy - 25).clamp(20, 100).toInt();
+      p.morale = (p.morale + (won ? 6 : drew ? 1 : -6)).clamp(0, 100).toInt();
+      int xp = 8 + (won ? 4 : 0);
+      xp += 6 * scorerIds.where((id) => id == p.id).length;
+      msgs.addAll(p.gainXp(xp));
+    }
+    return msgs;
   }
 
   void advanceRound() {
     if (!currentRoundPlayed || seasonFinished) return;
     currentRound++;
+    for (final t in teams) {
+      for (final p in t.squad) {
+        p.energy = (p.energy + 15).clamp(0, 100).toInt();
+      }
+    }
     notifyListeners();
   }
 
@@ -104,14 +172,22 @@ class GameState extends ChangeNotifier {
       t.played = 0;
       for (final p in t.squad) {
         p.age++;
+        if (p.age >= 34) {
+          p.overall = (p.overall - 2).clamp(55, 94).toInt();
+        } else if (p.age >= 32) {
+          p.overall = (p.overall - 1).clamp(55, 94).toInt();
+        }
+        p.energy = 100;
+        p.morale = 70;
       }
+      t.startingIds = autoLineup(t);
     }
     matches = _generateSchedule();
     currentRound = 1;
     notifyListeners();
   }
 
-  // ---------- SIMULAÇÃO ----------
+  // ---------- TÁTICAS E FORÇA ----------
 
   List<double> _tacticMods(Tactic t) {
     switch (t) {
@@ -126,21 +202,19 @@ class GameState extends ChangeNotifier {
     }
   }
 
-  List<double> _lambdas(Team home, Team away, Tactic ht, Tactic at) {
-    final double hs = home.strength + 4.0;
-    final double as = away.strength.toDouble();
-    final double diff = hs - as;
-    final List<double> mh = _tacticMods(ht);
-    final List<double> ma = _tacticMods(at);
-    final double lh =
-        (1.45 + diff / 18.0 + mh[0] + ma[1]).clamp(0.25, 4.5).toDouble();
-    final double la =
-        (1.15 - diff / 18.0 + ma[0] + mh[1]).clamp(0.25, 4.5).toDouble();
+  List<double> lambdasFrom(double hs, double as, Tactic ht, Tactic at) {
+    final diff = hs - as;
+    final mh = _tacticMods(ht);
+    final ma = _tacticMods(at);
+    final lh = (1.45 + diff / 18.0 + mh[0] + ma[1]).clamp(0.25, 4.5).toDouble();
+    final la = (1.15 - diff / 18.0 + ma[0] + mh[1]).clamp(0.25, 4.5).toDouble();
     return [lh, la];
   }
 
-  List<int> _simulateScore(Team home, Team away, Tactic ht, Tactic at) {
-    final l = _lambdas(home, away, ht, at);
+  List<int> _simulateScore(Team home, Team away) {
+    final hs = home.pitchStrength(home.startingPlayers) + 4.0;
+    final as = away.pitchStrength(away.startingPlayers);
+    final l = lambdasFrom(hs, as, Tactic.neutro, Tactic.neutro);
     return [_poisson(l[0]), _poisson(l[1])];
   }
 
@@ -157,76 +231,80 @@ class GameState extends ChangeNotifier {
 
   // ---------- PARTIDA AO VIVO ----------
 
-  List<MatchEvent> generateChunk(
-    Match m,
-    int minFrom,
-    int minTo,
-    Tactic userTactic,
-    int hg,
-    int ag,
-  ) {
-    final home = teams.firstWhere((t) => t.id == m.homeId);
-    final away = teams.firstWhere((t) => t.id == m.awayId);
-    final bool userIsHome = home.id == userTeamId;
-
-    final int aiDiff = userIsHome ? ag - hg : hg - ag;
-    Tactic ai = Tactic.neutro;
-    if (minFrom >= 60 && aiDiff <= -1) ai = Tactic.ofensivo;
-    if (minFrom >= 70 && aiDiff >= 2) ai = Tactic.retranca;
-
-    final Tactic ht = userIsHome ? userTactic : ai;
-    final Tactic at = userIsHome ? ai : userTactic;
-    final l = _lambdas(home, away, ht, at);
-
-    final List<MatchEvent> events = [];
+  List<MatchEvent> generateChunk({
+    required Match match,
+    required int minFrom,
+    required int minTo,
+    required Tactic homeTactic,
+    required Tactic awayTactic,
+    required double homeStrength,
+    required double awayStrength,
+    required List<Player> homeOnPitch,
+    required List<Player> awayOnPitch,
+  }) {
+    final l =
+        lambdasFrom(homeStrength, awayStrength, homeTactic, awayTactic);
+    final home = teams.firstWhere((t) => t.id == match.homeId);
+    final away = teams.firstWhere((t) => t.id == match.awayId);
+    final events = <MatchEvent>[];
     for (int min = minFrom; min < minTo; min++) {
       if (_rng.nextDouble() < l[0] / 90.0) {
+        final s = _pickScorer(homeOnPitch);
         events.add(MatchEvent(
           minute: min,
           type: 'GOAL',
           teamId: home.id,
-          text: "⚽ GOL do ${home.name}! ${_scorer(home)} marca aos $min'!",
+          playerId: s.id,
+          text: "⚽ GOL do ${home.name}! ${s.name} marca aos $min'!",
         ));
       }
       if (_rng.nextDouble() < l[1] / 90.0) {
+        final s = _pickScorer(awayOnPitch);
         events.add(MatchEvent(
           minute: min,
           type: 'GOAL',
           teamId: away.id,
-          text: "⚽ GOL do ${away.name}! ${_scorer(away)} marca aos $min'!",
+          playerId: s.id,
+          text: "⚽ GOL do ${away.name}! ${s.name} marca aos $min'!",
         ));
       }
       if (_rng.nextDouble() < 0.05) {
-        final t = _rng.nextBool() ? home : away;
+        final bool h = _rng.nextBool();
+        final t = h ? home : away;
+        final p = _pickScorer(h ? homeOnPitch : awayOnPitch);
         events.add(MatchEvent(
           minute: min,
           type: 'CHANCE',
           teamId: t.id,
-          text: "🔥 Chance do ${t.name}: ${_scorer(t)} finaliza e o goleiro salva!",
+          playerId: p.id,
+          text: "🔥 Chance do ${t.name}: ${p.name} finaliza e o goleiro salva!",
         ));
       }
       if (_rng.nextDouble() < 0.012) {
-        final t = _rng.nextBool() ? home : away;
+        final bool h = _rng.nextBool();
+        final t = h ? home : away;
+        final list = h ? homeOnPitch : awayOnPitch;
+        final p = list[_rng.nextInt(list.length)];
         events.add(MatchEvent(
           minute: min,
           type: 'CARD',
           teamId: t.id,
-          text: "🟨 Cartão amarelo para ${_anyPlayer(t)} (${t.name}).",
+          playerId: p.id,
+          text: "🟨 Cartão amarelo para ${p.name} (${t.name}).",
         ));
       }
     }
     return events;
   }
 
-  String _scorer(Team t) {
+  Player _pickScorer(List<Player> onPitch) {
     final att =
-        t.squad.where((p) => p.position == 'ATA' || p.position == 'MEI').toList();
-    if (att.isEmpty) return t.squad.first.name;
-    att.sort((a, b) => b.overall.compareTo(a.overall));
-    return att[_rng.nextInt(att.length < 5 ? att.length : 5)].name;
+        onPitch.where((p) => p.position == 'ATA' || p.position == 'MEI').toList();
+    final pool = att.isEmpty ? onPitch : att;
+    pool.sort((a, b) => b.overall.compareTo(a.overall));
+    final n = pool.length < 5 ? pool.length : 5;
+    return pool[_rng.nextInt(n)];
   }
-
-  String _anyPlayer(Team t) => t.squad[_rng.nextInt(t.squad.length)].name;
 
   // ---------- CALENDÁRIO ----------
 
