@@ -224,7 +224,7 @@ class GameState extends ChangeNotifier {
     saveToDisk();
   }
 
-  // ---------- PERSISTÊNCIA (SAVE/LOAD) ----------
+  // ---------- PERSISTÊNCIA ----------
 
   Future<void> saveToDisk() async {
     try {
@@ -282,18 +282,135 @@ class GameState extends ChangeNotifier {
     notifyListeners();
   }
 
-  // ---------- SIMULAÇÃO INTERNA ----------
+  // ---------- IMPRENSA ----------
+
+  List<PressConference> generatePressConference() {
+    final t = userTeam!;
+    final pos = userPosition;
+    final lastMatch = matches.lastWhere((m) =>
+        m.isPlayed && (m.homeId == t.id || m.awayId == t.id));
+    final userIsHome = lastMatch.homeId == t.id;
+    final gf = userIsHome ? lastMatch.homeGoals! : lastMatch.awayGoals!;
+    final ga = userIsHome ? lastMatch.awayGoals! : lastMatch.homeGoals!;
+    final won = gf > ga;
+    final drew = gf == ga;
+
+    final questions = <PressConference>[];
+
+    if (won) {
+      questions.add(PressConference(
+        question: 'Vitória importante! Como avalia a atuação da equipe?',
+        answers: [
+          'Fomos superiores do início ao fim, merecemos os 3 pontos.',
+          'Foi uma partida difícil, mas o time mostrou caráter.',
+          'Precisamos melhorar, não jogamos bem.',
+        ],
+        correctIndex: 0,
+        correctFeedback: 'Imprensa satisfeita com sua confiança! (+5 moral)',
+        wrongFeedback: 'Imprensa estranha sua modéstia. (-3 moral)',
+      ));
+    } else if (drew) {
+      questions.add(PressConference(
+        question: 'Empate em casa. O que faltou para vencer?',
+        answers: [
+          'Faltou eficiência no ataque, criamos chances mas não convertemos.',
+          'O adversário jogou muito bem, parabéns a eles.',
+          'Foi um resultado justo, aceitável.',
+        ],
+        correctIndex: 0,
+        correctFeedback: 'Análise técnica respeitada. (+3 moral)',
+        wrongFeedback: 'Imprensa critica falta de autocrítica. (-4 moral)',
+      ));
+    } else {
+      questions.add(PressConference(
+        question: 'Derrota preocupante. Qual sua explicação?',
+        answers: [
+          'Assumo a responsabilidade. Precisamos trabalhar mais.',
+          'A arbitragem prejudicou o time.',
+          'Os jogadores não se empenharam.',
+        ],
+        correctIndex: 0,
+        correctFeedback: 'Postura profissional elogiada. (+2 moral)',
+        wrongFeedback: 'Desculpas não colam. Imprensa detona. (-8 moral)',
+      ));
+    }
+
+    if (pos <= 4) {
+      questions.add(PressConference(
+        question: 'Time no G4. Acha que briga pelo título?',
+        answers: [
+          'Estamos focados jogo a jogo, mas temos qualidade para isso.',
+          'Sim, somos favoritos ao título.',
+          'Não, nosso objetivo é só não cair.',
+        ],
+        correctIndex: 0,
+        correctFeedback: 'Humildade e ambição: imprensa aprova. (+4 moral)',
+        wrongFeedback: 'Arrogância ou falta de visão. (-5 moral)',
+      ));
+    } else if (pos >= 17) {
+      questions.add(PressConference(
+        question: 'Time na zona de rebaixamento. Há risco de queda?',
+        answers: [
+          'Sabemos da situação, mas confiamos na virada.',
+          'Não, vamos escapar facilmente.',
+          'Sim, o risco é real e grande.',
+        ],
+        correctIndex: 0,
+        correctFeedback: 'Realismo e esperança. (+3 moral)',
+        wrongFeedback: 'Negação ou pessimismo. Imprensa pressiona. (-6 moral)',
+      ));
+    }
+
+    if (t.fanMorale <= 40) {
+      questions.add(PressConference(
+        question: 'Torcida protestando. Como lida com a pressão?',
+        answers: [
+          'Entendo a frustração. Precisamos dar alegrias a eles.',
+          'A torcida tem que apoiar sempre, não só quando vence.',
+          'Não me importo com protestos.',
+        ],
+        correctIndex: 0,
+        correctFeedback: 'Empatia com torcida. (+5 moral da torcida)',
+        wrongFeedback: 'Desrespeito com torcida. (-10 moral da torcida)',
+      ));
+    }
+
+    return questions;
+  }
+
+  void applyPressAnswer(int questionIndex, int answerIndex) {
+    final t = userTeam!;
+    final questions = generatePressConference();
+    if (questionIndex >= questions.length) return;
+    final q = questions[questionIndex];
+    if (answerIndex == q.correctIndex) {
+      t.pressMorale = (t.pressMorale + 5).clamp(0, 100).toInt();
+      if (q.correctFeedback.contains('torcida')) {
+        t.fanMorale = (t.fanMorale + 5).clamp(0, 100).toInt();
+      }
+    } else {
+      final penalty = q.wrongFeedback.contains('10') ? 10 :
+                      q.wrongFeedback.contains('8') ? 8 :
+                      q.wrongFeedback.contains('6') ? 6 :
+                      q.wrongFeedback.contains('5') ? 5 :
+                      q.wrongFeedback.contains('4') ? 4 : 3;
+      if (q.wrongFeedback.contains('torcida')) {
+        t.fanMorale = (t.fanMorale - penalty).clamp(0, 100).toInt();
+      } else {
+        t.pressMorale = (t.pressMorale - penalty).clamp(0, 100).toInt();
+      }
+    }
+    notifyListeners();
+  }
+
+  // ---------- SIMULAÇÃO E CALENDÁRIO ----------
 
   List<double> _tacticMods(Tactic t) {
     switch (t) {
-      case Tactic.retranca:
-        return [-0.45, -0.35];
-      case Tactic.neutro:
-        return [0.0, 0.0];
-      case Tactic.ofensivo:
-        return [0.35, 0.15];
-      case Tactic.tudoOuNada:
-        return [0.70, 0.45];
+      case Tactic.retranca: return [-0.45, -0.35];
+      case Tactic.neutro: return [0.0, 0.0];
+      case Tactic.ofensivo: return [0.35, 0.15];
+      case Tactic.tudoOuNada: return [0.70, 0.45];
     }
   }
 
@@ -335,64 +452,38 @@ class GameState extends ChangeNotifier {
     required List<Player> homeOnPitch,
     required List<Player> awayOnPitch,
   }) {
-    final l =
-        lambdasFrom(homeStrength, awayStrength, homeTactic, awayTactic);
+    final l = lambdasFrom(homeStrength, awayStrength, homeTactic, awayTactic);
     final home = teams.firstWhere((t) => t.id == match.homeId);
     final away = teams.firstWhere((t) => t.id == match.awayId);
     final events = <MatchEvent>[];
     for (int min = minFrom; min < minTo; min++) {
       if (_rng.nextDouble() < l[0] / 90.0) {
         final s = _pickScorer(homeOnPitch);
-        events.add(MatchEvent(
-          minute: min,
-          type: 'GOAL',
-          teamId: home.id,
-          playerId: s.id,
-          text: "⚽ GOL do ${home.name}! ${s.name} marca aos $min'!",
-        ));
+        events.add(MatchEvent(minute: min, type: 'GOAL', teamId: home.id, playerId: s.id, text: "⚽ GOL do ${home.name}! ${s.name} marca aos $min'!"));
       }
       if (_rng.nextDouble() < l[1] / 90.0) {
         final s = _pickScorer(awayOnPitch);
-        events.add(MatchEvent(
-          minute: min,
-          type: 'GOAL',
-          teamId: away.id,
-          playerId: s.id,
-          text: "⚽ GOL do ${away.name}! ${s.name} marca aos $min'!",
-        ));
+        events.add(MatchEvent(minute: min, type: 'GOAL', teamId: away.id, playerId: s.id, text: "⚽ GOL do ${away.name}! ${s.name} marca aos $min'!"));
       }
       if (_rng.nextDouble() < 0.05) {
         final bool h = _rng.nextBool();
         final t = h ? home : away;
         final p = _pickScorer(h ? homeOnPitch : awayOnPitch);
-        events.add(MatchEvent(
-          minute: min,
-          type: 'CHANCE',
-          teamId: t.id,
-          playerId: p.id,
-          text: "🔥 Chance do ${t.name}: ${p.name} finaliza e o goleiro salva!",
-        ));
+        events.add(MatchEvent(minute: min, type: 'CHANCE', teamId: t.id, playerId: p.id, text: "🔥 Chance do ${t.name}: ${p.name} finaliza e o goleiro salva!"));
       }
       if (_rng.nextDouble() < 0.012) {
         final bool h = _rng.nextBool();
         final t = h ? home : away;
         final list = h ? homeOnPitch : awayOnPitch;
         final p = list[_rng.nextInt(list.length)];
-        events.add(MatchEvent(
-          minute: min,
-          type: 'CARD',
-          teamId: t.id,
-          playerId: p.id,
-          text: "🟨 Cartão amarelo para ${p.name} (${t.name}).",
-        ));
+        events.add(MatchEvent(minute: min, type: 'CARD', teamId: t.id, playerId: p.id, text: "🟨 Cartão amarelo para ${p.name} (${t.name})."));
       }
     }
     return events;
   }
 
   Player _pickScorer(List<Player> onPitch) {
-    final att =
-        onPitch.where((p) => p.position == 'ATA' || p.position == 'MEI').toList();
+    final att = onPitch.where((p) => p.position == 'ATA' || p.position == 'MEI').toList();
     final pool = att.isEmpty ? onPitch : att;
     pool.sort((a, b) => b.overall.compareTo(a.overall));
     final n = pool.length < 5 ? pool.length : 5;
