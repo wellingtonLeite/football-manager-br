@@ -24,9 +24,8 @@ class AudioService extends ChangeNotifier {
   }
 
   Future<void> playCrowd() async {
-    // Vibração contínua simulando torcida (não implementado para não incomodar)
     if (_muted) return;
-    // Poderia adicionar vibração periódica aqui se desejar
+    // Vibração contínua simulando torcida (não implementado para não incomodar)
   }
 
   Future<void> stopCrowd() async {
