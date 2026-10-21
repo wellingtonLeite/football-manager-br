@@ -1,61 +1,45 @@
-import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 
 class AudioService extends ChangeNotifier {
-  final AudioPlayer _player = AudioPlayer();
   bool _muted = false;
-  bool _crowdPlaying = false;
 
   bool get muted => _muted;
 
   Future<void> playGoal() async {
     if (_muted) return;
-    await _player.stop();
-    await _player.play(AssetSource('sounds/goal.mp3'));
+    await HapticFeedback.heavyImpact();
+    await Future.delayed(const Duration(milliseconds: 100));
+    await HapticFeedback.heavyImpact();
   }
 
   Future<void> playWhistle() async {
     if (_muted) return;
-    await _player.stop();
-    await _player.play(AssetSource('sounds/whistle.mp3'));
+    await HapticFeedback.mediumImpact();
   }
 
   Future<void> playCard() async {
     if (_muted) return;
-    await _player.stop();
-    await _player.play(AssetSource('sounds/card.mp3'));
+    await HapticFeedback.lightImpact();
   }
 
   Future<void> playCrowd() async {
-    if (_muted || _crowdPlaying) return;
-    _crowdPlaying = true;
-    await _player.setReleaseMode(ReleaseMode.loop);
-    await _player.play(AssetSource('sounds/crowd.mp3'));
-    notifyListeners();
+    // Vibração contínua simulando torcida (não implementado para não incomodar)
+    if (_muted) return;
+    // Poderia adicionar vibração periódica aqui se desejar
   }
 
   Future<void> stopCrowd() async {
-    _crowdPlaying = false;
-    await _player.stop();
-    notifyListeners();
+    // Não há nada para parar
   }
 
   Future<void> playButton() async {
     if (_muted) return;
-    await _player.play(AssetSource('sounds/button.mp3'));
+    await HapticFeedback.selectionClick();
   }
 
   void toggleMute() {
     _muted = !_muted;
-    if (_muted) {
-      stopCrowd();
-    }
     notifyListeners();
-  }
-
-  @override
-  void dispose() {
-    _player.dispose();
-    super.dispose();
   }
 }
