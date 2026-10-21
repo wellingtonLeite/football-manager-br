@@ -4,6 +4,7 @@ import '../game/engine.dart';
 import '../game/models.dart';
 import '../game/data.dart';
 import 'shield.dart';
+import 'live_match_screen.dart';
 
 const Color kGreen = Color(0xFF1B5E20);
 
@@ -82,9 +83,9 @@ class HomeScreen extends StatelessWidget {
                   const SizedBox(height: 8),
                   Text(
                     game.seasonFinished
-                        ? 'Temporada encerrada!'
-                        : 'Posição: ${game.userPosition}º • ${team.points} pts',
-                    style: const TextStyle(color: Colors.white, fontSize: 18),
+                        ? 'Temporada ${game.seasonYear} encerrada!'
+                        : 'Temporada ${game.seasonYear} • ${game.userPosition}º • ${team.points} pts',
+                    style: const TextStyle(color: Colors.white, fontSize: 16),
                   ),
                   Text(
                     '${team.played} jogos • Estádio: ${team.stadium}',
@@ -106,16 +107,12 @@ class HomeScreen extends StatelessWidget {
           _menuButton(
             context,
             game.seasonFinished
-                ? '🏁 Ver Classificação Final'
+                ? '🏆 Fim de Temporada'
                 : '⚽ Rodada ${game.currentRound}',
             Colors.green,
             () => Navigator.push(
               context,
-              MaterialPageRoute(
-                builder: (_) => game.seasonFinished
-                    ? const TableScreen()
-                    : const RoundScreen(),
-              ),
+              MaterialPageRoute(builder: (_) => const RoundScreen()),
             ),
           ),
           const SizedBox(height: 12),
@@ -172,11 +169,91 @@ class RoundScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final game = context.watch<GameState>();
+
+    if (game.seasonFinished) {
+      final champ = game.champion;
+      return Scaffold(
+        appBar: AppBar(
+          title: Text('Temporada ${game.seasonYear}'),
+          backgroundColor: kGreen,
+        ),
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Text('🏆', style: TextStyle(fontSize: 64)),
+              ClubShield(shortName: champ.shortName, size: 80),
+              const SizedBox(height: 12),
+              Text(
+                'CAMPEÃO ${game.seasonYear}',
+                style: const TextStyle(
+                  color: Colors.amber,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              Text(
+                champ.name,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 28,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              Text(
+                '${champ.points} pts • ${champ.wins} vitórias',
+                style: const TextStyle(color: Colors.white70),
+              ),
+              const SizedBox(height: 24),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 32),
+                child: SizedBox(
+                  width: double.infinity,
+                  height: 52,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.orange,
+                      foregroundColor: Colors.white,
+                    ),
+                    onPressed: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const TableScreen()),
+                    ),
+                    child: const Text('Ver Classificação Final'),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 32),
+                child: SizedBox(
+                  width: double.infinity,
+                  height: 52,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.green,
+                      foregroundColor: Colors.white,
+                    ),
+                    onPressed: game.startNewSeason,
+                    child: Text(
+                      '🔄 Iniciar Temporada ${game.seasonYear + 1}',
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     final matches = game.currentRoundMatches;
     final played = game.currentRoundPlayed;
     return Scaffold(
-      appBar:
-          AppBar(title: Text('Rodada ${game.currentRound}'), backgroundColor: kGreen),
+      appBar: AppBar(
+        title: Text('Rodada ${game.currentRound}'),
+        backgroundColor: kGreen,
+      ),
       body: Column(
         children: [
           Expanded(
@@ -193,7 +270,17 @@ class RoundScreen extends StatelessWidget {
                     backgroundColor: played ? Colors.orange : Colors.green,
                     foregroundColor: Colors.white,
                   ),
-                  onPressed: played ? game.advanceRound : game.simulateRound,
+                  onPressed: played
+                      ? game.advanceRound
+                      : () {
+                          game.simulateOtherMatches();
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const LiveMatchScreen(),
+                            ),
+                          );
+                        },
                   child: Text(
                     played
                         ? 'Ir para Rodada ${game.currentRound + 1} →'
@@ -230,7 +317,7 @@ class RoundScreen extends StatelessWidget {
             const SizedBox(width: 6),
             Expanded(
               child: Text(
-                home.name,
+                isUser && !m.isPlayed ? 'SEU JOGO →' : home.name,
                 textAlign: TextAlign.right,
                 style: const TextStyle(color: Colors.white, fontSize: 13),
               ),
@@ -331,8 +418,10 @@ class TableScreen extends StatelessWidget {
     final game = context.watch<GameState>();
     final table = game.standings;
     return Scaffold(
-      appBar:
-          AppBar(title: const Text('Série A 2026'), backgroundColor: kGreen),
+      appBar: AppBar(
+        title: Text('Série A ${game.seasonYear}'),
+        backgroundColor: kGreen,
+      ),
       body: ListView.builder(
         itemCount: table.length + 2,
         itemBuilder: (context, index) {
@@ -343,8 +432,8 @@ class TableScreen extends StatelessWidget {
                 children: [
                   Expanded(
                       flex: 1,
-                      child: Text('#',
-                          style: TextStyle(color: Colors.white54))),
+                      child:
+                          Text('#', style: TextStyle(color: Colors.white54))),
                   Expanded(
                       flex: 5,
                       child: Text('Clube',
@@ -393,8 +482,7 @@ class TableScreen extends StatelessWidget {
               dense: true,
               leading: CircleAvatar(
                 radius: 14,
-                backgroundColor:
-                    isUser ? Colors.amber : Colors.grey.shade800,
+                backgroundColor: isUser ? Colors.amber : Colors.grey.shade800,
                 child: Text(
                   '${i + 1}',
                   style: const TextStyle(
@@ -434,15 +522,13 @@ class TableScreen extends StatelessWidget {
                       width: 24,
                       child: Text('${t.played}',
                           textAlign: TextAlign.center,
-                          style:
-                              const TextStyle(color: Colors.white70))),
+                          style: const TextStyle(color: Colors.white70))),
                   SizedBox(
                       width: 32,
                       child: Text(
                           '${t.goalDifference > 0 ? '+' : ''}${t.goalDifference}',
                           textAlign: TextAlign.center,
-                          style:
-                              const TextStyle(color: Colors.white70))),
+                          style: const TextStyle(color: Colors.white70))),
                 ],
               ),
             ),
