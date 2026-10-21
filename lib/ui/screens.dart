@@ -4,8 +4,8 @@ import '../game/engine.dart';
 import '../game/models.dart';
 import '../game/data.dart';
 import 'shield.dart';
-import 'live_match_screen.dart';
 import 'audio_service.dart';
+import 'live_match_screen.dart';
 
 const Color kGreen = Color(0xFF1B5E20);
 
@@ -17,18 +17,14 @@ Color _overallColor(int o) {
   return Colors.red;
 }
 
-// --- NOVA TELA DE BOAS-VINDAS ---
+// --- TELA DE INÍCIO ---
 class WelcomeScreen extends StatelessWidget {
   const WelcomeScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
     final game = context.read<GameState>();
-    final hasSave = game.started; // Na verdade, checkamos via loadFromDisk no main, mas aqui assumimos estado inicial
-    
-    // Para saber se tem save real, verificamos se userTeamId não é nulo
-    // Mas como o Main carregou o save, se 'started' for true, temos jogo.
-    // Se for falso, mostramos opções.
+    final hasSave = game.started; 
     
     return Scaffold(
       backgroundColor: const Color(0xFF0A0A0A),
@@ -47,12 +43,10 @@ class WelcomeScreen extends StatelessWidget {
                   fontSize: 24,
                   fontWeight: FontWeight.bold,
                   color: Colors.white,
-                  fontFamily: 'RobotoCondensed', // Fallback padrão
                 ),
               ),
               const SizedBox(height: 40),
               
-              // Botão Continuar (se houver save)
               if (hasSave)
                 SizedBox(
                   width: double.infinity,
@@ -76,7 +70,6 @@ class WelcomeScreen extends StatelessWidget {
                 
               if (hasSave) const SizedBox(height: 16),
 
-              // Botão Nova Carreira
               SizedBox(
                 width: double.infinity,
                 height: 56,
@@ -88,7 +81,6 @@ class WelcomeScreen extends StatelessWidget {
                   onPressed: () {
                      context.read<AudioService>().playButton();
                      if (hasSave) {
-                        // Confirmação de sobrescrever
                         showDialog(
                           context: context,
                           builder: (ctx) => AlertDialog(
@@ -137,10 +129,7 @@ class TeamSelectScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Escolha seu Clube'),
-        backgroundColor: kGreen,
-      ),
+      appBar: AppBar(title: const Text('Escolha seu Clube'), backgroundColor: kGreen),
       body: ListView.separated(
         itemCount: kClubs.length,
         separatorBuilder: (_, __) => const Divider(height: 1),
@@ -148,24 +137,12 @@ class TeamSelectScreen extends StatelessWidget {
           final c = kClubs[i];
           return ListTile(
             leading: ClubShield(shortName: c.shortName, size: 32),
-            title: Text(
-              c.name,
-              style: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            subtitle: Text(
-              '${c.state} • ${c.stadium} • Téc: ${c.coach}',
-              style: const TextStyle(color: Colors.white70, fontSize: 12),
-            ),
-            trailing: Text('★' * c.stars,
-                style: const TextStyle(color: Colors.amber)),
+            title: Text(c.name, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+            subtitle: Text('${c.state} • ${c.stadium} • Téc: ${c.coach}', style: const TextStyle(color: Colors.white70, fontSize: 12)),
+            trailing: Text('★' * c.stars, style: const TextStyle(color: Colors.amber)),
             onTap: () {
               context.read<AudioService>().playButton();
-              context
-                  .read<GameState>()
-                  .startGame(c.shortName.toLowerCase());
+              context.read<GameState>().startGame(c.shortName.toLowerCase());
             },
           );
         },
@@ -204,10 +181,7 @@ class HomeScreen extends StatelessWidget {
                 children: [
                   ClubShield(shortName: team.shortName, size: 64),
                   const SizedBox(height: 8),
-                  Text(
-                    '★' * team.stars,
-                    style: const TextStyle(color: Colors.amber, fontSize: 20),
-                  ),
+                  Text('★' * team.stars, style: const TextStyle(color: Colors.amber, fontSize: 20)),
                   const SizedBox(height: 8),
                   Text(
                     game.seasonFinished
@@ -215,18 +189,9 @@ class HomeScreen extends StatelessWidget {
                         : 'Temporada ${game.seasonYear} • ${game.userPosition}º • ${team.points} pts',
                     style: const TextStyle(color: Colors.white, fontSize: 16),
                   ),
-                  Text(
-                    '${team.played} jogos • Estádio: ${team.stadium}',
-                    style: const TextStyle(color: Colors.white70),
-                  ),
+                  Text('${team.played} jogos • Estádio: ${team.stadium}', style: const TextStyle(color: Colors.white70)),
                   const SizedBox(height: 4),
-                  Text(
-                    'Técnico: ${team.coach}',
-                    style: TextStyle(
-                      color: Colors.amber.shade300,
-                      fontSize: 13,
-                    ),
-                  ),
+                  Text('Técnico: ${team.coach}', style: TextStyle(color: Colors.amber.shade300, fontSize: 13)),
                   const SizedBox(height: 12),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -240,13 +205,11 @@ class HomeScreen extends StatelessWidget {
                     Builder(builder: (context) {
                       final m = game.userMatchCurrent;
                       if (m == null) return const SizedBox.shrink();
-                      final opp = game.teams.firstWhere(
-                          (t) => t.id == (m.homeId == team.id ? m.awayId : m.homeId));
+                      final opp = game.teams.firstWhere((t) => t.id == (m.homeId == team.id ? m.awayId : m.homeId));
                       final casa = m.homeId == team.id;
                       return Text(
                         'Próximo: ${opp.name} (${casa ? 'casa' : 'fora'}) • Rodada ${m.round}',
-                        style: const TextStyle(
-                            color: Colors.greenAccent, fontSize: 13),
+                        style: const TextStyle(color: Colors.greenAccent, fontSize: 13),
                       );
                     }),
                   ],
@@ -255,37 +218,11 @@ class HomeScreen extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 16),
-          _menuButton(
-            context,
-            game.seasonFinished
-                ? '🏆 Fim de Temporada'
-                : '⚽ Rodada ${game.currentRound}',
-            Colors.green,
-            () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const RoundScreen()),
-            ),
-          ),
+          _menuButton(context, game.seasonFinished ? '🏆 Fim de Temporada' : '⚽ Rodada ${game.currentRound}', Colors.green, () => Navigator.push(context, MaterialPageRoute(builder: (_) => const RoundScreen()))),
           const SizedBox(height: 12),
-          _menuButton(
-            context,
-            '👥 Elenco',
-            Colors.blue,
-            () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const SquadScreen()),
-            ),
-          ),
+          _menuButton(context, '👥 Elenco', Colors.blue, () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SquadScreen()))),
           const SizedBox(height: 12),
-          _menuButton(
-            context,
-            '📊 Classificação',
-            Colors.orange,
-            () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const TableScreen()),
-            ),
-          ),
+          _menuButton(context, '📊 Classificação', Colors.orange, () => Navigator.push(context, MaterialPageRoute(builder: (_) => const TableScreen()))),
         ],
       ),
     );
@@ -298,41 +235,24 @@ class HomeScreen extends StatelessWidget {
         const SizedBox(height: 4),
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-          decoration: BoxDecoration(
-            color: color.withOpacity(0.2),
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: color, width: 1),
-          ),
-          child: Text(
-            '$value%',
-            style: TextStyle(color: color, fontWeight: FontWeight.bold),
-          ),
+          decoration: BoxDecoration(color: color.withOpacity(0.2), borderRadius: BorderRadius.circular(8), border: Border.all(color: color, width: 1)),
+          child: Text('$value%', style: TextStyle(color: color, fontWeight: FontWeight.bold)),
         ),
       ],
     );
   }
 
-  Widget _menuButton(
-      BuildContext context, String label, Color color, VoidCallback onTap) {
+  Widget _menuButton(BuildContext context, String label, Color color, VoidCallback onTap) {
     return SizedBox(
       width: double.infinity,
       height: 56,
       child: ElevatedButton(
-        style: ElevatedButton.styleFrom(
-          backgroundColor: color,
-          foregroundColor: Colors.white,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-        ),
+        style: ElevatedButton.styleFrom(backgroundColor: color, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
         onPressed: () {
           context.read<AudioService>().playButton();
           onTap();
         },
-        child: Text(
-          label,
-          style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
-        ),
+        child: Text(label, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
       ),
     );
   }
@@ -348,10 +268,7 @@ class RoundScreen extends StatelessWidget {
     if (game.seasonFinished) {
       final champ = game.champion;
       return Scaffold(
-        appBar: AppBar(
-          title: Text('Temporada ${game.seasonYear}'),
-          backgroundColor: kGreen,
-        ),
+        appBar: AppBar(title: Text('Temporada ${game.seasonYear}'), backgroundColor: kGreen),
         body: Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -359,26 +276,9 @@ class RoundScreen extends StatelessWidget {
               const Text('🏆', style: TextStyle(fontSize: 64)),
               ClubShield(shortName: champ.shortName, size: 80),
               const SizedBox(height: 12),
-              Text(
-                'CAMPEÃO ${game.seasonYear}',
-                style: const TextStyle(
-                  color: Colors.amber,
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              Text(
-                champ.name,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 28,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              Text(
-                '${champ.points} pts • ${champ.wins} vitórias',
-                style: const TextStyle(color: Colors.white70),
-              ),
+              Text('CAMPEÃO ${game.seasonYear}', style: const TextStyle(color: Colors.amber, fontSize: 18, fontWeight: FontWeight.bold)),
+              Text(champ.name, style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold)),
+              Text('${champ.points} pts • ${champ.wins} vitórias', style: const TextStyle(color: Colors.white70)),
               const SizedBox(height: 24),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 32),
@@ -386,16 +286,10 @@ class RoundScreen extends StatelessWidget {
                   width: double.infinity,
                   height: 52,
                   child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.orange,
-                      foregroundColor: Colors.white,
-                    ),
+                    style: ElevatedButton.styleFrom(backgroundColor: Colors.orange, foregroundColor: Colors.white),
                     onPressed: () {
                       context.read<AudioService>().playButton();
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (_) => const TableScreen()),
-                      );
+                      Navigator.push(context, MaterialPageRoute(builder: (_) => const TableScreen()));
                     },
                     child: const Text('Ver Classificação Final'),
                   ),
@@ -408,17 +302,12 @@ class RoundScreen extends StatelessWidget {
                   width: double.infinity,
                   height: 52,
                   child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.green,
-                      foregroundColor: Colors.white,
-                    ),
+                    style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white),
                     onPressed: () {
                       context.read<AudioService>().playButton();
                       game.startNewSeason();
                     },
-                    child: Text(
-                      '🔄 Iniciar Temporada ${game.seasonYear + 1}',
-                    ),
+                    child: Text('🔄 Iniciar Temporada ${game.seasonYear + 1}'),
                   ),
                 ),
               ),
@@ -431,17 +320,10 @@ class RoundScreen extends StatelessWidget {
     final matches = game.currentRoundMatches;
     final played = game.currentRoundPlayed;
     return Scaffold(
-      appBar: AppBar(
-        title: Text('Rodada ${game.currentRound}'),
-        backgroundColor: kGreen,
-      ),
+      appBar: AppBar(title: Text('Rodada ${game.currentRound}'), backgroundColor: kGreen),
       body: Column(
         children: [
-          Expanded(
-            child: ListView(
-              children: [for (final m in matches) _matchTile(game, m)],
-            ),
-          ),
+          Expanded(child: ListView(children: [for (final m in matches) _matchTile(game, m)])),
           SafeArea(
             child: Padding(
               padding: const EdgeInsets.all(16),
@@ -449,10 +331,7 @@ class RoundScreen extends StatelessWidget {
                 width: double.infinity,
                 height: 52,
                 child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: played ? Colors.orange : Colors.green,
-                    foregroundColor: Colors.white,
-                  ),
+                  style: ElevatedButton.styleFrom(backgroundColor: played ? Colors.orange : Colors.green, foregroundColor: Colors.white),
                   onPressed: played
                       ? () {
                           context.read<AudioService>().playButton();
@@ -463,9 +342,7 @@ class RoundScreen extends StatelessWidget {
                           game.simulateOtherMatches();
                           Navigator.push(
                             context,
-                            MaterialPageRoute(
-                              builder: (_) => const LiveMatchScreen(),
-                            ),
+                            MaterialPageRoute(builder: (_) => const LiveMatchScreen()),
                           ).then((_) {
                             if (game.currentRoundPlayed) {
                               _showPressConference(context, game);
@@ -473,13 +350,8 @@ class RoundScreen extends StatelessWidget {
                           });
                         },
                   child: Text(
-                    played
-                        ? 'Ir para Rodada ${game.currentRound + 1} →'
-                        : '⚽ Simular Rodada ${game.currentRound}',
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
+                    played ? 'Ir para Rodada ${game.currentRound + 1} →' : '⚽ Simular Rodada ${game.currentRound}',
+                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                   ),
                 ),
               ),
@@ -505,44 +377,21 @@ class RoundScreen extends StatelessWidget {
     final isUser = m.homeId == game.userTeamId || m.awayId == game.userTeamId;
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-      decoration: BoxDecoration(
-        color: isUser ? const Color(0xFF1B5E20) : const Color(0xFF263238),
-        borderRadius: BorderRadius.circular(8),
-      ),
+      decoration: BoxDecoration(color: isUser ? const Color(0xFF1B5E20) : const Color(0xFF263238), borderRadius: BorderRadius.circular(8)),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         child: Row(
           children: [
             ClubShield(shortName: home.shortName, size: 20),
             const SizedBox(width: 6),
-            Expanded(
-              child: Text(
-                isUser && !m.isPlayed ? 'SEU JOGO →' : home.name,
-                textAlign: TextAlign.right,
-                style: const TextStyle(color: Colors.white, fontSize: 13),
-              ),
-            ),
+            Expanded(child: Text(isUser && !m.isPlayed ? 'SEU JOGO →' : home.name, textAlign: TextAlign.right, style: const TextStyle(color: Colors.white, fontSize: 13))),
             Container(
               margin: const EdgeInsets.symmetric(horizontal: 8),
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-              decoration: BoxDecoration(
-                color: Colors.black38,
-                borderRadius: BorderRadius.circular(6),
-              ),
-              child: Text(
-                m.isPlayed ? '${m.homeGoals} x ${m.awayGoals}' : 'vs',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
+              decoration: BoxDecoration(color: Colors.black38, borderRadius: BorderRadius.circular(6)),
+              child: Text(m.isPlayed ? '${m.homeGoals} x ${m.awayGoals}' : 'vs', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
             ),
-            Expanded(
-              child: Text(
-                away.name,
-                style: const TextStyle(color: Colors.white, fontSize: 13),
-              ),
-            ),
+            Expanded(child: Text(away.name, style: const TextStyle(color: Colors.white, fontSize: 13))),
             const SizedBox(width: 6),
             ClubShield(shortName: away.shortName, size: 20),
           ],
@@ -556,11 +405,7 @@ class PressConferenceDialog extends StatefulWidget {
   final List<PressConference> questions;
   final GameState game;
 
-  const PressConferenceDialog({
-    super.key,
-    required this.questions,
-    required this.game,
-  });
+  const PressConferenceDialog({super.key, required this.questions, required this.game});
 
   @override
   State<PressConferenceDialog> createState() => _PressConferenceDialogState();
@@ -576,15 +421,10 @@ class _PressConferenceDialogState extends State<PressConferenceDialog> {
     if (currentQ >= widget.questions.length) {
       return AlertDialog(
         backgroundColor: const Color(0xFF263238),
-        title: const Text('📰 Coletiva Encerrada',
-            style: TextStyle(color: Colors.white)),
-        content: const Text('Obrigado pelas respostas!',
-            style: TextStyle(color: Colors.white70)),
+        title: const Text('📰 Coletiva Encerrada', style: TextStyle(color: Colors.white)),
+        content: const Text('Obrigado pelas respostas!', style: TextStyle(color: Colors.white70)),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Fechar'),
-          ),
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Fechar')),
         ],
       );
     }
@@ -596,43 +436,25 @@ class _PressConferenceDialogState extends State<PressConferenceDialog> {
         children: [
           const Text('📰', style: TextStyle(fontSize: 24)),
           const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              'Coletiva (${currentQ + 1}/${widget.questions.length})',
-              style: const TextStyle(color: Colors.white),
-            ),
-          ),
+          Expanded(child: Text('Coletiva (${currentQ + 1}/${widget.questions.length})', style: const TextStyle(color: Colors.white))),
         ],
       ),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            q.question,
-            style: const TextStyle(
-              color: Colors.white,
-              fontWeight: FontWeight.bold,
-              fontSize: 16,
-            ),
-          ),
+          Text(q.question, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
           const SizedBox(height: 16),
           if (!answered)
             ...List.generate(q.answers.length, (idx) {
               return Padding(
                 padding: const EdgeInsets.only(bottom: 8.0),
                 child: OutlinedButton(
-                  style: OutlinedButton.styleFrom(
-                    alignment: Alignment.centerLeft,
-                    side: BorderSide(color: Colors.white24),
-                    foregroundColor: Colors.white,
-                  ),
+                  style: OutlinedButton.styleFrom(alignment: Alignment.centerLeft, side: BorderSide(color: Colors.white24), foregroundColor: Colors.white),
                   onPressed: () {
                     setState(() {
                       answered = true;
-                      feedback = idx == q.correctIndex
-                          ? q.correctFeedback
-                          : q.wrongFeedback;
+                      feedback = idx == q.correctIndex ? q.correctFeedback : q.wrongFeedback;
                       widget.game.applyPressAnswer(currentQ, idx);
                     });
                   },
@@ -691,14 +513,7 @@ class SquadScreen extends StatelessWidget {
         ..sort((a, b) => b.overall.compareTo(a.overall));
       widgets.add(Padding(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
-        child: Text(
-          pos,
-          style: const TextStyle(
-            color: Colors.greenAccent,
-            fontWeight: FontWeight.bold,
-            letterSpacing: 3,
-          ),
-        ),
+        child: Text(pos, style: const TextStyle(color: Colors.greenAccent, fontWeight: FontWeight.bold, letterSpacing: 3)),
       ));
       for (final p in list) {
         final tit = team.startingIds.contains(p.id);
@@ -706,13 +521,7 @@ class SquadScreen extends StatelessWidget {
           dense: true,
           leading: CircleAvatar(
             backgroundColor: _overallColor(p.overall),
-            child: Text(
-              '${p.overall}',
-              style: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
+            child: Text('${p.overall}', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
           ),
           title: Row(
             children: [
@@ -720,23 +529,10 @@ class SquadScreen extends StatelessWidget {
                 Container(
                   margin: const EdgeInsets.only(right: 6),
                   padding: const EdgeInsets.symmetric(horizontal: 4),
-                  decoration: BoxDecoration(
-                    color: Colors.amber,
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: const Text(
-                    'TIT',
-                    style: TextStyle(
-                      fontSize: 9,
-                      color: Colors.black,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
+                  decoration: BoxDecoration(color: Colors.amber, borderRadius: BorderRadius.circular(4)),
+                  child: const Text('TIT', style: TextStyle(fontSize: 9, color: Colors.black, fontWeight: FontWeight.bold)),
                 ),
-              Expanded(
-                child: Text(p.name,
-                    style: const TextStyle(color: Colors.white)),
-              ),
+              Expanded(child: Text(p.name, style: const TextStyle(color: Colors.white))),
             ],
           ),
           subtitle: Text(
@@ -747,8 +543,7 @@ class SquadScreen extends StatelessWidget {
       }
     }
     return Scaffold(
-      appBar:
-          AppBar(title: Text('Elenco - ${team.name}'), backgroundColor: kGreen),
+      appBar: AppBar(title: Text('Elenco - ${team.name}'), backgroundColor: kGreen),
       body: ListView(children: widgets),
     );
   }
@@ -769,10 +564,7 @@ class TableScreen extends StatelessWidget {
     final game = context.watch<GameState>();
     final table = game.standings;
     return Scaffold(
-      appBar: AppBar(
-        title: Text('Série A ${game.seasonYear}'),
-        backgroundColor: kGreen,
-      ),
+      appBar: AppBar(title: Text('Série A ${game.seasonYear}'), backgroundColor: kGreen),
       body: ListView.builder(
         itemCount: table.length + 2,
         itemBuilder: (context, index) {
@@ -781,29 +573,11 @@ class TableScreen extends StatelessWidget {
               padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               child: Row(
                 children: [
-                  Expanded(
-                      flex: 1,
-                      child:
-                          Text('#', style: TextStyle(color: Colors.white54))),
-                  Expanded(
-                      flex: 5,
-                      child: Text('Clube',
-                          style: TextStyle(color: Colors.white54))),
-                  Expanded(
-                      flex: 1,
-                      child: Text('P',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(color: Colors.white54))),
-                  Expanded(
-                      flex: 1,
-                      child: Text('J',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(color: Colors.white54))),
-                  Expanded(
-                      flex: 1,
-                      child: Text('SG',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(color: Colors.white54))),
+                  Expanded(flex: 1, child: Text('#', style: TextStyle(color: Colors.white54))),
+                  Expanded(flex: 5, child: Text('Clube', style: TextStyle(color: Colors.white54))),
+                  Expanded(flex: 1, child: Text('P', textAlign: TextAlign.center, style: TextStyle(color: Colors.white54))),
+                  Expanded(flex: 1, child: Text('J', textAlign: TextAlign.center, style: TextStyle(color: Colors.white54))),
+                  Expanded(flex: 1, child: Text('SG', textAlign: TextAlign.center, style: TextStyle(color: Colors.white54))),
                 ],
               ),
             );
@@ -814,12 +588,9 @@ class TableScreen extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('🟩 Verde: Libertadores (G4)',
-                      style: TextStyle(color: Colors.white70)),
-                  Text('🟦 Azul: Sul-Americana (5º-6º)',
-                      style: TextStyle(color: Colors.white70)),
-                  Text('🟥 Vermelho: Rebaixamento (Z4)',
-                      style: TextStyle(color: Colors.white70)),
+                  Text('🟩 Verde: Libertadores (G4)', style: TextStyle(color: Colors.white70)),
+                  Text('🟦 Azul: Sul-Americana (5º-6º)', style: TextStyle(color: Colors.white70)),
+                  Text('🟥 Vermelho: Rebaixamento (Z4)', style: TextStyle(color: Colors.white70)),
                 ],
               ),
             );
@@ -834,14 +605,7 @@ class TableScreen extends StatelessWidget {
               leading: CircleAvatar(
                 radius: 14,
                 backgroundColor: isUser ? Colors.amber : Colors.grey.shade800,
-                child: Text(
-                  '${i + 1}',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
+                child: Text('${i + 1}', style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
               ),
               title: Row(
                 children: [
@@ -850,11 +614,7 @@ class TableScreen extends StatelessWidget {
                   Expanded(
                     child: Text(
                       isUser ? '${t.name} (VOCÊ)' : t.name,
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontWeight:
-                            isUser ? FontWeight.bold : FontWeight.normal,
-                      ),
+                      style: TextStyle(color: Colors.white, fontWeight: isUser ? FontWeight.bold : FontWeight.normal),
                     ),
                   ),
                 ],
@@ -862,24 +622,9 @@ class TableScreen extends StatelessWidget {
               trailing: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  SizedBox(
-                      width: 32,
-                      child: Text('${t.points}',
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold))),
-                  SizedBox(
-                      width: 24,
-                      child: Text('${t.played}',
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(color: Colors.white70))),
-                  SizedBox(
-                      width: 32,
-                      child: Text(
-                          '${t.goalDifference > 0 ? '+' : ''}${t.goalDifference}',
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(color: Colors.white70))),
+                  SizedBox(width: 32, child: Text('${t.points}', textAlign: TextAlign.center, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
+                  SizedBox(width: 24, child: Text('${t.played}', textAlign: TextAlign.center, style: const TextStyle(color: Colors.white70))),
+                  SizedBox(width: 32, child: Text('${t.goalDifference > 0 ? '+' : ''}${t.goalDifference}', textAlign: TextAlign.center, style: const TextStyle(color: Colors.white70))),
                 ],
               ),
             ),
