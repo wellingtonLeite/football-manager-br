@@ -257,7 +257,9 @@ class RoundScreen extends StatelessWidget {
       body: Column(
         children: [
           Expanded(
-            child: ListView(children: [for (final m in matches) _matchTile(game, m)]),
+            child: ListView(
+              children: [for (final m in matches) _matchTile(game, m)],
+            ),
           ),
           SafeArea(
             child: Padding(
