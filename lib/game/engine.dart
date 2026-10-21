@@ -1,5 +1,7 @@
+import 'dart:convert';
 import 'dart:math';
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'models.dart';
 import 'data.dart';
 
@@ -11,6 +13,8 @@ class GameState extends ChangeNotifier {
   String? userTeamId;
   bool started = false;
   final Random _rng = Random();
+
+  static const String _saveKey = 'fmbr_save_v1';
 
   int get totalRounds => teams.isEmpty ? 0 : (teams.length - 1) * 2;
 
@@ -48,6 +52,7 @@ class GameState extends ChangeNotifier {
     seasonYear = 2026;
     started = true;
     notifyListeners();
+    saveToDisk();
   }
 
   List<String> autoLineup(Team t) {
@@ -98,6 +103,7 @@ class GameState extends ChangeNotifier {
       _applyEffects(away, away.startingPlayers, score[1], score[0], const []);
     }
     notifyListeners();
+    saveToDisk();
   }
 
   List<String> finishUserMatch(
@@ -128,6 +134,7 @@ class GameState extends ChangeNotifier {
     m.awayGoals = ag;
     _applyResult(homeTeam, awayTeam, hg, ag);
     notifyListeners();
+    saveToDisk();
     return msgs;
   }
 
@@ -184,6 +191,7 @@ class GameState extends ChangeNotifier {
       }
     }
     notifyListeners();
+    saveToDisk();
   }
 
   void startNewSeason() {
@@ -213,9 +221,68 @@ class GameState extends ChangeNotifier {
     matches = _generateSchedule();
     currentRound = 1;
     notifyListeners();
+    saveToDisk();
   }
 
-  // ---------- TÁTICAS E FORÇA ----------
+  // ---------- PERSISTÊNCIA (SAVE/LOAD) ----------
+
+  Future<void> saveToDisk() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final data = {
+        'teams': teams.map((t) => t.toJson()).toList(),
+        'matches': matches.map((m) => m.toJson()).toList(),
+        'currentRound': currentRound,
+        'seasonYear': seasonYear,
+        'userTeamId': userTeamId,
+        'started': started,
+      };
+      await prefs.setString(_saveKey, jsonEncode(data));
+    } catch (e) {
+      debugPrint('Erro ao salvar: $e');
+    }
+  }
+
+  static Future<GameState?> loadFromDisk() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_saveKey);
+      if (raw == null) return null;
+
+      final map = jsonDecode(raw) as Map<String, dynamic>;
+      final gs = GameState();
+      
+      gs.teams = (map['teams'] as List)
+          .map((tJson) => Team.fromJson(tJson))
+          .toList();
+      gs.matches = (map['matches'] as List)
+          .map((mJson) => Match.fromJson(mJson))
+          .toList();
+      gs.currentRound = map['currentRound'];
+      gs.seasonYear = map['seasonYear'];
+      gs.userTeamId = map['userTeamId'];
+      gs.started = map['started'] ?? false;
+      
+      return gs;
+    } catch (e) {
+      debugPrint('Erro ao carregar: $e');
+      return null;
+    }
+  }
+
+  Future<void> deleteSave() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_saveKey);
+    teams = [];
+    matches = [];
+    currentRound = 1;
+    seasonYear = 2026;
+    userTeamId = null;
+    started = false;
+    notifyListeners();
+  }
+
+  // ---------- SIMULAÇÃO INTERNA ----------
 
   List<double> _tacticMods(Tactic t) {
     switch (t) {
@@ -256,8 +323,6 @@ class GameState extends ChangeNotifier {
     } while (p > limit);
     return k - 1;
   }
-
-  // ---------- PARTIDA AO VIVO ----------
 
   List<MatchEvent> generateChunk({
     required Match match,
@@ -333,132 +398,6 @@ class GameState extends ChangeNotifier {
     final n = pool.length < 5 ? pool.length : 5;
     return pool[_rng.nextInt(n)];
   }
-
-  // ---------- IMPRENSA ----------
-
-  List<PressConference> generatePressConference() {
-    final t = userTeam!;
-    final pos = userPosition;
-    final lastMatch = matches.lastWhere((m) =>
-        m.isPlayed && (m.homeId == t.id || m.awayId == t.id));
-    final userIsHome = lastMatch.homeId == t.id;
-    final gf = userIsHome ? lastMatch.homeGoals! : lastMatch.awayGoals!;
-    final ga = userIsHome ? lastMatch.awayGoals! : lastMatch.homeGoals!;
-    final won = gf > ga;
-    final drew = gf == ga;
-
-    final questions = <PressConference>[];
-
-    // Pergunta sobre desempenho
-    if (won) {
-      questions.add(PressConference(
-        question: 'Vitória importante! Como avalia a atuação da equipe?',
-        answers: [
-          'Fomos superiores do início ao fim, merecemos os 3 pontos.',
-          'Foi uma partida difícil, mas o time mostrou caráter.',
-          'Precisamos melhorar, não jogamos bem.',
-        ],
-        correctIndex: 0,
-        correctFeedback: 'Imprensa satisfeita com sua confiança! (+5 moral)',
-        wrongFeedback: 'Imprensa estranha sua modéstia. (-3 moral)',
-      ));
-    } else if (drew) {
-      questions.add(PressConference(
-        question: 'Empate em casa. O que faltou para vencer?',
-        answers: [
-          'Faltou eficiência no ataque, criamos chances mas não convertemos.',
-          'O adversário jogou muito bem, parabéns a eles.',
-          'Foi um resultado justo, aceitável.',
-        ],
-        correctIndex: 0,
-        correctFeedback: 'Análise técnica respeitada. (+3 moral)',
-        wrongFeedback: 'Imprensa critica falta de autocrítica. (-4 moral)',
-      ));
-    } else {
-      questions.add(PressConference(
-        question: 'Derrota preocupante. Qual sua explicação?',
-        answers: [
-          'Assumo a responsabilidade. Precisamos trabalhar mais.',
-          'A arbitragem prejudicou o time.',
-          'Os jogadores não se empenharam.',
-        ],
-        correctIndex: 0,
-        correctFeedback: 'Postura profissional elogiada. (+2 moral)',
-        wrongFeedback: 'Desculpas não colam. Imprensa detona. (-8 moral)',
-      ));
-    }
-
-    // Pergunta sobre posição na tabela
-    if (pos <= 4) {
-      questions.add(PressConference(
-        question: 'Time no G4. Acha que briga pelo título?',
-        answers: [
-          'Estamos focados jogo a jogo, mas temos qualidade para isso.',
-          'Sim, somos favoritos ao título.',
-          'Não, nosso objetivo é só não cair.',
-        ],
-        correctIndex: 0,
-        correctFeedback: 'Humildade e ambição: imprensa aprova. (+4 moral)',
-        wrongFeedback: 'Arrogância ou falta de visão. (-5 moral)',
-      ));
-    } else if (pos >= 17) {
-      questions.add(PressConference(
-        question: 'Time na zona de rebaixamento. Há risco de queda?',
-        answers: [
-          'Sabemos da situação, mas confiamos na virada.',
-          'Não, vamos escapar facilmente.',
-          'Sim, o risco é real e grande.',
-        ],
-        correctIndex: 0,
-        correctFeedback: 'Realismo e esperança. (+3 moral)',
-        wrongFeedback: 'Negação ou pessimismo. Imprensa pressiona. (-6 moral)',
-      ));
-    }
-
-    // Pergunta sobre torcida
-    if (t.fanMorale <= 40) {
-      questions.add(PressConference(
-        question: 'Torcida protestando. Como lida com a pressão?',
-        answers: [
-          'Entendo a frustração. Precisamos dar alegrias a eles.',
-          'A torcida tem que apoiar sempre, não só quando vence.',
-          'Não me importo com protestos.',
-        ],
-        correctIndex: 0,
-        correctFeedback: 'Empatia com torcida. (+5 moral da torcida)',
-        wrongFeedback: 'Desrespeito com torcida. (-10 moral da torcida)',
-      ));
-    }
-
-    return questions;
-  }
-
-  void applyPressAnswer(int questionIndex, int answerIndex) {
-    final t = userTeam!;
-    final questions = generatePressConference();
-    if (questionIndex >= questions.length) return;
-    final q = questions[questionIndex];
-    if (answerIndex == q.correctIndex) {
-      t.pressMorale = (t.pressMorale + 5).clamp(0, 100).toInt();
-      if (q.correctFeedback.contains('torcida')) {
-        t.fanMorale = (t.fanMorale + 5).clamp(0, 100).toInt();
-      }
-    } else {
-      final penalty = q.wrongFeedback.contains('10') ? 10 :
-                      q.wrongFeedback.contains('8') ? 8 :
-                      q.wrongFeedback.contains('6') ? 6 :
-                      q.wrongFeedback.contains('5') ? 5 :
-                      q.wrongFeedback.contains('4') ? 4 : 3;
-      if (q.wrongFeedback.contains('torcida')) {
-        t.fanMorale = (t.fanMorale - penalty).clamp(0, 100).toInt();
-      } else {
-        t.pressMorale = (t.pressMorale - penalty).clamp(0, 100).toInt();
-      }
-    }
-    notifyListeners();
-  }
-
-  // ---------- CALENDÁRIO ----------
 
   List<Match> _generateSchedule() {
     final ids = teams.map((t) => t.id).toList();
