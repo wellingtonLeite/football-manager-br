@@ -1,39 +1,55 @@
 name: Build Football Manager APK
 
+# Este arquivo quase nunca precisa mudar. Os passos do build ficam em
+# ci/build.sh e a versão do Flutter em ci/flutter_version, que podem ser
+# atualizados pelo upload do site (que ignora a pasta .github).
+
 on:
   push:
-    branches: [ main ]
+    branches: [ main, master ]
   workflow_dispatch:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
-    
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      
-    - name: Setup Java
-      uses: actions/setup-java@v3
-      with:
-        distribution: 'zulu'
-        java-version: '17'
-        
-    - name: Setup Flutter
-      uses: subosito/flutter-action@v2
-      with:
-        flutter-version: '3.19.0'
-        channel: 'stable'
-        
-    - name: Install dependencies
-      run: flutter pub get
-      
-    - name: Build APK
-      run: flutter build apk --release
-      
-    - name: Upload APK Artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: football-manager-br-release
-        path: build/app/outputs/flutter-apk/app-release.apk
-        retention-days: 14
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Setup Java
+        uses: actions/setup-java@v6
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Read Flutter version
+        id: versions
+        run: |
+          v="$(tr -d '[:space:]' < ci/flutter_version 2>/dev/null || true)"
+          echo "flutter=${v:-3.47.7}" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Flutter ${{ steps.versions.outputs.flutter }}
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ steps.versions.outputs.flutter }}
+          channel: 'stable'
+          cache: true
+
+      - name: Build APK
+        run: |
+          sed -i 's/\r$//' ci/build.sh
+          bash ci/build.sh build
+
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: football-manager-br-release
+          path: build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: error
+          retention-days: 14
+
+      # Depois do upload: se um teste falhar, o APK já está disponível
+      - name: Run tests
+        run: bash ci/build.sh test

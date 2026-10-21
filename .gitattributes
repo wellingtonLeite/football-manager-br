@@ -1,0 +1,2 @@
+*.sh text eol=lf
+ci/flutter_version text eol=lf
