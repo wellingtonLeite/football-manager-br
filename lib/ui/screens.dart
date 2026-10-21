@@ -17,6 +17,120 @@ Color _overallColor(int o) {
   return Colors.red;
 }
 
+// --- NOVA TELA DE BOAS-VINDAS ---
+class WelcomeScreen extends StatelessWidget {
+  const WelcomeScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final game = context.read<GameState>();
+    final hasSave = game.started; // Na verdade, checkamos via loadFromDisk no main, mas aqui assumimos estado inicial
+    
+    // Para saber se tem save real, verificamos se userTeamId não é nulo
+    // Mas como o Main carregou o save, se 'started' for true, temos jogo.
+    // Se for falso, mostramos opções.
+    
+    return Scaffold(
+      backgroundColor: const Color(0xFF0A0A0A),
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.sports_soccer, size: 80, color: Colors.white),
+              const SizedBox(height: 20),
+              Text(
+                'FOOTBALL MANAGER\nBRASIL 2026',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                  fontFamily: 'RobotoCondensed', // Fallback padrão
+                ),
+              ),
+              const SizedBox(height: 40),
+              
+              // Botão Continuar (se houver save)
+              if (hasSave)
+                SizedBox(
+                  width: double.infinity,
+                  height: 56,
+                  child: ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.green.shade700,
+                      foregroundColor: Colors.white,
+                    ),
+                    onPressed: () {
+                       context.read<AudioService>().playButton();
+                       Navigator.pushReplacement(
+                         context, 
+                         MaterialPageRoute(builder: (_) => const HomeScreen())
+                       );
+                    },
+                    icon: const Icon(Icons.play_arrow),
+                    label: const Text('CONTINUAR CARREIRA'),
+                  ),
+                ),
+                
+              if (hasSave) const SizedBox(height: 16),
+
+              // Botão Nova Carreira
+              SizedBox(
+                width: double.infinity,
+                height: 56,
+                child: OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(
+                    side: BorderSide(color: Colors.white.withOpacity(0.5)),
+                    foregroundColor: Colors.white,
+                  ),
+                  onPressed: () {
+                     context.read<AudioService>().playButton();
+                     if (hasSave) {
+                        // Confirmação de sobrescrever
+                        showDialog(
+                          context: context,
+                          builder: (ctx) => AlertDialog(
+                            backgroundColor: const Color(0xFF263238),
+                            title: const Text('Sobrescrever Save?', style: TextStyle(color: Colors.white)),
+                            content: const Text('Você perderá seu progresso atual.', style: TextStyle(color: Colors.white70)),
+                            actions: [
+                              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar')),
+                              TextButton(
+                                onPressed: () {
+                                  Navigator.pop(ctx);
+                                  game.deleteSave().then((_) {
+                                    Navigator.pushReplacement(
+                                      context,
+                                      MaterialPageRoute(builder: (_) => const TeamSelectScreen()),
+                                    );
+                                  });
+                                },
+                                child: const Text('Confirmar', style: TextStyle(color: Colors.redAccent)),
+                              ),
+                            ],
+                          ),
+                        );
+                     } else {
+                       Navigator.pushReplacement(
+                         context,
+                         MaterialPageRoute(builder: (_) => const TeamSelectScreen()),
+                       );
+                     }
+                  },
+                  icon: const Icon(Icons.add_circle_outline),
+                  label: const Text('NOVA CARREIRA'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class TeamSelectScreen extends StatelessWidget {
   const TeamSelectScreen({super.key});
 
@@ -497,3 +611,281 @@ class _PressConferenceDialogState extends State<PressConferenceDialog> {
           Text(
             q.question,
             style: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.bold,
+              fontSize: 16,
+            ),
+          ),
+          const SizedBox(height: 16),
+          if (!answered)
+            ...List.generate(q.answers.length, (idx) {
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 8.0),
+                child: OutlinedButton(
+                  style: OutlinedButton.styleFrom(
+                    alignment: Alignment.centerLeft,
+                    side: BorderSide(color: Colors.white24),
+                    foregroundColor: Colors.white,
+                  ),
+                  onPressed: () {
+                    setState(() {
+                      answered = true;
+                      feedback = idx == q.correctIndex
+                          ? q.correctFeedback
+                          : q.wrongFeedback;
+                      widget.game.applyPressAnswer(currentQ, idx);
+                    });
+                  },
+                  child: Text(q.answers[idx]),
+                ),
+              );
+            })
+          else
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: feedback!.contains('+') || feedback!.contains('aprov') || feedback!.contains('respeit') || feedback!.contains('confia') || feedback!.contains('empat')
+                    ? Colors.green.withOpacity(0.2)
+                    : Colors.red.withOpacity(0.2),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                feedback!,
+                style: TextStyle(
+                  color: feedback!.contains('+') || feedback!.contains('aprov') || feedback!.contains('respeit') || feedback!.contains('confia') || feedback!.contains('empat')
+                      ? Colors.greenAccent
+                      : Colors.redAccent,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+        ],
+      ),
+      actions: [
+        if (answered)
+          TextButton(
+            onPressed: () {
+              setState(() {
+                currentQ++;
+                answered = false;
+                feedback = null;
+              });
+            },
+            child: const Text('Próxima Pergunta'),
+          ),
+      ],
+    );
+  }
+}
+
+class SquadScreen extends StatelessWidget {
+  const SquadScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final team = context.watch<GameState>().userTeam!;
+    const order = ['GOL', 'ZAG', 'LAT', 'VOL', 'MEI', 'ATA'];
+    final widgets = <Widget>[];
+    for (final pos in order) {
+      final list = team.squad.where((p) => p.position == pos).toList()
+        ..sort((a, b) => b.overall.compareTo(a.overall));
+      widgets.add(Padding(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
+        child: Text(
+          pos,
+          style: const TextStyle(
+            color: Colors.greenAccent,
+            fontWeight: FontWeight.bold,
+            letterSpacing: 3,
+          ),
+        ),
+      ));
+      for (final p in list) {
+        final tit = team.startingIds.contains(p.id);
+        widgets.add(ListTile(
+          dense: true,
+          leading: CircleAvatar(
+            backgroundColor: _overallColor(p.overall),
+            child: Text(
+              '${p.overall}',
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+          title: Row(
+            children: [
+              if (tit)
+                Container(
+                  margin: const EdgeInsets.only(right: 6),
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.amber,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: const Text(
+                    'TIT',
+                    style: TextStyle(
+                      fontSize: 9,
+                      color: Colors.black,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              Expanded(
+                child: Text(p.name,
+                    style: const TextStyle(color: Colors.white)),
+              ),
+            ],
+          ),
+          subtitle: Text(
+            '${p.position} • ${p.age} anos\n⚡${p.energy} • 😊${p.morale} • ⭐${p.xp}/${Player.xpToNext}',
+            style: const TextStyle(color: Colors.white60, fontSize: 11),
+          ),
+        ));
+      }
+    }
+    return Scaffold(
+      appBar:
+          AppBar(title: Text('Elenco - ${team.name}'), backgroundColor: kGreen),
+      body: ListView(children: widgets),
+    );
+  }
+}
+
+class TableScreen extends StatelessWidget {
+  const TableScreen({super.key});
+
+  Color? _zoneColor(int idx) {
+    if (idx < 4) return Colors.green.withOpacity(0.25);
+    if (idx < 6) return Colors.teal.withOpacity(0.20);
+    if (idx >= 16) return Colors.red.withOpacity(0.25);
+    return null;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final game = context.watch<GameState>();
+    final table = game.standings;
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('Série A ${game.seasonYear}'),
+        backgroundColor: kGreen,
+      ),
+      body: ListView.builder(
+        itemCount: table.length + 2,
+        itemBuilder: (context, index) {
+          if (index == 0) {
+            return const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: Row(
+                children: [
+                  Expanded(
+                      flex: 1,
+                      child:
+                          Text('#', style: TextStyle(color: Colors.white54))),
+                  Expanded(
+                      flex: 5,
+                      child: Text('Clube',
+                          style: TextStyle(color: Colors.white54))),
+                  Expanded(
+                      flex: 1,
+                      child: Text('P',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: Colors.white54))),
+                  Expanded(
+                      flex: 1,
+                      child: Text('J',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: Colors.white54))),
+                  Expanded(
+                      flex: 1,
+                      child: Text('SG',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: Colors.white54))),
+                ],
+              ),
+            );
+          }
+          if (index == table.length + 1) {
+            return const Padding(
+              padding: EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('🟩 Verde: Libertadores (G4)',
+                      style: TextStyle(color: Colors.white70)),
+                  Text('🟦 Azul: Sul-Americana (5º-6º)',
+                      style: TextStyle(color: Colors.white70)),
+                  Text('🟥 Vermelho: Rebaixamento (Z4)',
+                      style: TextStyle(color: Colors.white70)),
+                ],
+              ),
+            );
+          }
+          final i = index - 1;
+          final t = table[i];
+          final isUser = t.id == game.userTeamId;
+          return Container(
+            color: _zoneColor(i),
+            child: ListTile(
+              dense: true,
+              leading: CircleAvatar(
+                radius: 14,
+                backgroundColor: isUser ? Colors.amber : Colors.grey.shade800,
+                child: Text(
+                  '${i + 1}',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+              title: Row(
+                children: [
+                  ClubShield(shortName: t.shortName, size: 18),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      isUser ? '${t.name} (VOCÊ)' : t.name,
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight:
+                            isUser ? FontWeight.bold : FontWeight.normal,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  SizedBox(
+                      width: 32,
+                      child: Text('${t.points}',
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold))),
+                  SizedBox(
+                      width: 24,
+                      child: Text('${t.played}',
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(color: Colors.white70))),
+                  SizedBox(
+                      width: 32,
+                      child: Text(
+                          '${t.goalDifference > 0 ? '+' : ''}${t.goalDifference}',
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(color: Colors.white70))),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
