@@ -12,7 +12,6 @@ class ClubInfo {
       this.coach, this.stars);
 }
 
-// Série A 2026 (base: acessos/rebaixamentos confirmados em dez/2025)
 const List<ClubInfo> kClubs = [
   ClubInfo('Flamengo', 'FLA', 'RJ', 'Maracanã', 'Filipe Luís', 5),
   ClubInfo('Palmeiras', 'PAL', 'SP', 'Allianz Parque', 'Abel Ferreira', 5),
@@ -44,7 +43,6 @@ class Star {
   const Star(this.name, this.position, this.age, this.overall);
 }
 
-// Estrelas reais por clube (temporada 2026)
 const Map<String, List<Star>> kStars = {
   'FLA': [
     Star('Agustín Rossi', 'GOL', 31, 84),
