@@ -1,15 +1,19 @@
+import 'dart:math';
+
 enum Tactic { retranca, neutro, ofensivo, tudoOuNada }
 
 class MatchEvent {
   final int minute;
   final String type;
   final String teamId;
+  final String? playerId;
   final String text;
 
   MatchEvent({
     required this.minute,
     required this.type,
     required this.teamId,
+    this.playerId,
     required this.text,
   });
 }
@@ -19,7 +23,10 @@ class Player {
   final String name;
   final String position;
   int age;
-  final int overall;
+  int overall;
+  int xp;
+  int energy;
+  int morale;
 
   Player({
     required this.id,
@@ -27,7 +34,44 @@ class Player {
     required this.position,
     required this.age,
     required this.overall,
+    this.xp = 0,
+    this.energy = 100,
+    this.morale = 70,
   });
+
+  static const int xpToNext = 60;
+
+  double get conditionedOverall {
+    final fE = 0.85 + 0.15 * (energy / 100.0);
+    final fM = 0.95 + 0.10 * (morale / 100.0);
+    return overall * fE * fM;
+  }
+
+  List<String> gainXp(int amount) {
+    xp += amount;
+    final msgs = <String>[];
+    final rng = Random();
+    while (xp >= xpToNext) {
+      xp -= xpToNext;
+      int gain = 0;
+      if (overall >= 94) {
+        gain = 0;
+      } else if (age <= 21) {
+        gain = rng.nextDouble() < 0.8 ? 2 : 1;
+      } else if (age <= 26) {
+        gain = rng.nextDouble() < 0.7 ? 1 : 0;
+      } else if (age <= 30) {
+        gain = rng.nextDouble() < 0.35 ? 1 : 0;
+      } else if (age <= 33) {
+        gain = rng.nextDouble() < 0.15 ? 1 : 0;
+      }
+      if (gain > 0) {
+        overall += gain;
+        msgs.add('$name evoluiu para $overall de overall (+$gain)!');
+      }
+    }
+    return msgs;
+  }
 }
 
 class Team {
@@ -40,6 +84,8 @@ class Team {
   final int stars;
   final int baseOverall;
   final List<Player> squad;
+
+  List<String> startingIds = [];
 
   int points = 0;
   int wins = 0;
@@ -63,13 +109,15 @@ class Team {
 
   int get goalDifference => goalsFor - goalsAgainst;
 
-  int get strength {
-    if (squad.isEmpty) return baseOverall;
-    final sorted = List<Player>.from(squad)
-      ..sort((a, b) => b.overall.compareTo(a.overall));
-    final top = sorted.take(11);
-    final sum = top.fold<int>(0, (s, p) => s + p.overall);
-    return sum ~/ 11;
+  Player playerById(String id) => squad.firstWhere((p) => p.id == id);
+
+  List<Player> get startingPlayers =>
+      startingIds.map((id) => playerById(id)).toList();
+
+  double pitchStrength(List<Player> onPitch) {
+    if (onPitch.isEmpty) return baseOverall.toDouble();
+    final sum = onPitch.fold<double>(0, (s, p) => s + p.conditionedOverall);
+    return sum / onPitch.length;
   }
 }
 
