@@ -94,8 +94,8 @@ class GameState extends ChangeNotifier {
     final double hs = home.strength + 4.0;
     final double as = away.strength;
     final double diff = hs - as;
-    double lambdaHome = (1.45 + diff / 18.0).clamp(0.25, 4.5);
-    double lambdaAway = (1.15 - diff / 18.0).clamp(0.25, 4.5);
+    final double lambdaHome = (1.45 + diff / 18.0).clamp(0.25, 4.5).toDouble();
+    final double lambdaAway = (1.15 - diff / 18.0).clamp(0.25, 4.5).toDouble();
     return [_poisson(lambdaHome), _poisson(lambdaAway)];
   }
 
