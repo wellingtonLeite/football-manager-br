@@ -20,6 +20,7 @@ class Team {
   final String shortName;
   final String state;
   final String stadium;
+  final String coach;
   final int stars;
   final int baseOverall;
   final List<Player> squad;
@@ -38,6 +39,7 @@ class Team {
     required this.shortName,
     required this.state,
     required this.stadium,
+    required this.coach,
     required this.stars,
     required this.baseOverall,
     required this.squad,
