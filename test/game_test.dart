@@ -195,11 +195,14 @@ void main() {
 
   test('carreira de técnico: demissão e novo emprego', () {
     final g = GameState()..startGame('fla');
-    while (g.userTeam!.played < 6) {
+    // Com tantas derrotas a diretoria pode demitir antes da 6ª partida
+    while (g.career.employed && g.userTeam!.played < 6) {
       playDay(g, hg: 0, ag: 3);
     }
-    g.career.boardConfidence = 0;
-    playDay(g, hg: 0, ag: 3);
+    if (g.career.employed) {
+      g.career.boardConfidence = 0;
+      playDay(g, hg: 0, ag: 3);
+    }
     expect(g.career.employed, isFalse);
     expect(g.career.offers, isNotEmpty);
     final offer = g.career.offers.first;

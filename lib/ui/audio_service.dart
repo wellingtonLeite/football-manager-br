@@ -16,6 +16,9 @@ class AudioService extends ChangeNotifier {
   int _matchSpeedMs = 200;
   static const Map<String, int> speeds = {'Lenta': 350, 'Normal': 200, 'Rápida': 100, 'Turbo': 40};
 
+  /// Último erro ao tocar um som (aparece nas configurações para diagnóstico).
+  String? lastError;
+
   AudioPlayer? _crowd;
   final List<AudioPlayer> _fx = [];
   int _next = 0;
@@ -90,6 +93,7 @@ class AudioService extends ChangeNotifier {
       await player.stop();
       await player.play(AssetSource('sounds/$file'), volume: volume);
     } catch (e) {
+      lastError = '$e';
       debugPrint('Som indisponível: $e');
     }
   }
@@ -136,6 +140,7 @@ class AudioService extends ChangeNotifier {
       _crowd ??= AudioPlayer()..setReleaseMode(ReleaseMode.loop);
       await _crowd!.play(AssetSource('sounds/torcida.wav'), volume: 0.25);
     } catch (e) {
+      lastError = '$e';
       debugPrint('Som indisponível: $e');
     }
   }
@@ -144,6 +149,13 @@ class AudioService extends ChangeNotifier {
     try {
       await _crowd?.stop();
     } catch (_) {}
+  }
+
+  /// Toca o som do gol e atualiza a tela (mostra o erro, se houver).
+  Future<void> testSound() async {
+    lastError = null;
+    await _play('gol.wav');
+    notifyListeners();
   }
 
   Future<void> playButton() async {

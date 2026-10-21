@@ -1,7 +1,6 @@
 import 'dart:convert';
-import 'dart:typed_data';
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:provider/provider.dart';
 import '../game/engine.dart';
@@ -44,7 +43,13 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
   Future<void> _open(int slot, Map<String, dynamic>? meta) async {
     final game = context.read<GameState>();
     context.read<AudioService>().playButton();
-    await game.switchSlot(slot);
+    try {
+      await game.switchSlot(slot);
+    } catch (e) {
+      // Nunca falhar em silêncio: mostra o erro para o jogador
+      if (mounted) showResult(context, TransferResult(false, 'Não foi possível abrir o espaço $slot: $e'));
+      return;
+    }
     if (!mounted) return;
     if (meta == null || !game.started) {
       await Navigator.push(context, MaterialPageRoute(builder: (_) => const ModeSelectScreen()));
@@ -73,9 +78,9 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
   Future<void> _import(int slot) async {
     final game = context.read<GameState>();
     try {
-      final files = await FilePicker.pickFiles(dialogTitle: 'Escolha o backup da carreira');
-      if (files.isEmpty) return;
-      final raw = utf8.decode(await files.first.readAsBytes());
+      // Seletor nativo do Android (MainActivity.kt), sem plugin externo
+      final raw = await const MethodChannel('fmbr/backup').invokeMethod<String>('pickText');
+      if (raw == null) return;
       await game.switchSlot(slot);
       final ok = await game.importSave(raw);
       if (!mounted) return;
@@ -347,6 +352,14 @@ void showSoundSettings(BuildContext context) {
               value: audio.soundOn,
               onChanged: audio.setSound,
               title: const Text('🔊 Sons (apito, gol, torcida)', style: TextStyle(color: Colors.white)),
+            ),
+            ListTile(
+              leading: const Icon(Icons.volume_up, color: Colors.white70),
+              title: const Text('Testar som', style: TextStyle(color: Colors.white)),
+              subtitle: audio.lastError == null
+                  ? null
+                  : Text('Erro: ${audio.lastError}', style: const TextStyle(color: Colors.redAccent, fontSize: 12)),
+              onTap: audio.testSound,
             ),
             SwitchListTile(
               value: audio.vibrationOn,
