@@ -2,6 +2,10 @@ import 'dart:math';
 
 enum Tactic { retranca, neutro, ofensivo, tudoOuNada }
 
+enum FanMood { apoio, neutro, protesto }
+
+enum PressMood { positivo, neutro, critico }
+
 class MatchEvent {
   final int minute;
   final String type;
@@ -95,6 +99,9 @@ class Team {
   int goalsAgainst = 0;
   int played = 0;
 
+  int fanMorale = 70;
+  int pressMorale = 70;
+
   Team({
     required this.id,
     required this.name,
@@ -119,6 +126,18 @@ class Team {
     final sum = onPitch.fold<double>(0, (s, p) => s + p.conditionedOverall);
     return sum / onPitch.length;
   }
+
+  FanMood get fanMoodStatus {
+    if (fanMorale >= 75) return FanMood.apoio;
+    if (fanMorale <= 40) return FanMood.protesto;
+    return FanMood.neutro;
+  }
+
+  PressMood get pressMoodStatus {
+    if (pressMorale >= 75) return PressMood.positivo;
+    if (pressMorale <= 40) return PressMood.critico;
+    return PressMood.neutro;
+  }
 }
 
 class Match {
@@ -131,4 +150,20 @@ class Match {
   Match({required this.round, required this.homeId, required this.awayId});
 
   bool get isPlayed => homeGoals != null && awayGoals != null;
+}
+
+class PressConference {
+  final String question;
+  final List<String> answers;
+  final int correctIndex;
+  final String correctFeedback;
+  final String wrongFeedback;
+
+  PressConference({
+    required this.question,
+    required this.answers,
+    required this.correctIndex,
+    required this.correctFeedback,
+    required this.wrongFeedback,
+  });
 }
