@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../game/engine.dart';
 import '../game/models.dart';
 import 'shield.dart';
+import 'audio_service.dart';
 
 const Color _kGreen = Color(0xFF1B5E20);
 
@@ -38,6 +39,7 @@ class _LiveMatchScreenState extends State<LiveMatchScreen> {
   late List<Player> homeBench;
   late List<Player> awayOn;
   late List<Player> awayBench;
+  late AudioService audio;
 
   Timer? _timer;
   int minute = 0;
@@ -67,6 +69,7 @@ class _LiveMatchScreenState extends State<LiveMatchScreen> {
   void initState() {
     super.initState();
     game = context.read<GameState>();
+    audio = context.read<AudioService>();
     match = game.userMatchCurrent!;
     home = game.teams.firstWhere((t) => t.id == match.homeId);
     away = game.teams.firstWhere((t) => t.id == match.awayId);
@@ -75,12 +78,17 @@ class _LiveMatchScreenState extends State<LiveMatchScreen> {
     homeBench = home.squad.where((p) => !homeOn.contains(p)).toList();
     awayOn = List<Player>.from(away.startingPlayers);
     awayBench = away.squad.where((p) => !awayOn.contains(p)).toList();
+    
+    audio.playWhistle();
+    audio.playCrowd();
+    
     _timer = Timer.periodic(const Duration(milliseconds: 200), (_) => _tick());
   }
 
   @override
   void dispose() {
     _timer?.cancel();
+    audio.stopCrowd();
     super.dispose();
   }
 
@@ -91,6 +99,7 @@ class _LiveMatchScreenState extends State<LiveMatchScreen> {
       if (minute == 45) {
         _drain(45);
         halftime = true;
+        audio.playWhistle();
         feed.insert(
           0,
           MatchEvent(
@@ -121,6 +130,7 @@ class _LiveMatchScreenState extends State<LiveMatchScreen> {
       final e = pending.removeAt(0);
       feed.insert(0, e);
       if (e.type == 'GOAL') {
+        audio.playGoal();
         if (e.teamId == home.id) {
           hg++;
         } else {
@@ -133,6 +143,8 @@ class _LiveMatchScreenState extends State<LiveMatchScreen> {
             aiScorerIds.add(e.playerId!);
           }
         }
+      } else if (e.type == 'CARD') {
+        audio.playCard();
       }
     }
   }
@@ -202,6 +214,7 @@ class _LiveMatchScreenState extends State<LiveMatchScreen> {
   void _finish() {
     finished = true;
     _timer?.cancel();
+    audio.playWhistle();
     feed.insert(
       0,
       MatchEvent(
@@ -249,6 +262,7 @@ class _LiveMatchScreenState extends State<LiveMatchScreen> {
       );
       return;
     }
+    audio.playButton();
     Player? out;
     showModalBottomSheet(
       context: context,
@@ -305,6 +319,7 @@ class _LiveMatchScreenState extends State<LiveMatchScreen> {
                               subtitle: Text('${p.position} • ⚡${p.energy}',
                                   style: const TextStyle(color: Colors.white60)),
                               onTap: () {
+                                audio.playButton();
                                 setState(() {
                                   userOn.remove(out);
                                   userBench.add(out!);
@@ -342,6 +357,10 @@ class _LiveMatchScreenState extends State<LiveMatchScreen> {
         title: Text('Rodada ${match.round} — AO VIVO'),
         backgroundColor: _kGreen,
         actions: [
+          IconButton(
+            icon: Icon(audio.muted ? Icons.volume_off : Icons.volume_up),
+            onPressed: audio.toggleMute,
+          ),
           IconButton(
             icon: const Icon(Icons.swap_horiz),
             tooltip: 'Substituição',
@@ -416,6 +435,7 @@ class _LiveMatchScreenState extends State<LiveMatchScreen> {
                           foregroundColor: Colors.white,
                         ),
                         onPressed: () {
+                          audio.playButton();
                           showDialog(
                             context: context,
                             builder: (dlg) => AlertDialog(
@@ -452,6 +472,7 @@ class _LiveMatchScreenState extends State<LiveMatchScreen> {
                               actions: [
                                 TextButton(
                                   onPressed: () {
+                                    audio.playButton();
                                     Navigator.pop(dlg);
                                     Navigator.pop(context);
                                   },
@@ -574,18 +595,22 @@ class _LiveMatchScreenState extends State<LiveMatchScreen> {
                 backgroundColor: Colors.green,
                 foregroundColor: Colors.white,
               ),
-              onPressed: () => setState(() {
-                halftime = false;
-                feed.insert(
-                  0,
-                  MatchEvent(
-                    minute: 45,
-                    type: 'INFO',
-                    teamId: '',
-                    text: '⏱️ Bola rolando no 2º tempo!',
-                  ),
-                );
-              }),
+              onPressed: () {
+                audio.playButton();
+                setState(() {
+                  halftime = false;
+                  audio.playWhistle();
+                  feed.insert(
+                    0,
+                    MatchEvent(
+                      minute: 45,
+                      type: 'INFO',
+                      teamId: '',
+                      text: '⏱️ Bola rolando no 2º tempo!',
+                    ),
+                  );
+                });
+              },
               child: const Text('▶️ Iniciar 2º Tempo'),
             ),
           ),
@@ -601,7 +626,7 @@ class _LiveMatchScreenState extends State<LiveMatchScreen> {
       selectedColor: Colors.amber,
       backgroundColor: Colors.grey.shade900,
       labelStyle: const TextStyle(color: Colors.white, fontSize: 12),
-      onSelected: talkApplied == null ? (v) { if (v) _applyTalk(key); } : null,
+      onSelected: talkApplied == null ? (v) { if (v) { audio.playButton(); _applyTalk(key); } } : null,
     );
   }
 
@@ -632,7 +657,10 @@ class _LiveMatchScreenState extends State<LiveMatchScreen> {
             onSelected: finished
                 ? null
                 : (v) {
-                    if (v) setState(() => userTactic = t);
+                    if (v) {
+                      audio.playButton();
+                      setState(() => userTactic = t);
+                    }
                   },
           ),
       ],
