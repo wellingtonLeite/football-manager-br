@@ -240,7 +240,8 @@ extension GameStats on GameState {
     need.forEach((pos, n) {
       final list = (byPos[pos] ?? [])..sort((a, b) => b.$2.compareTo(a.$2));
       for (final (p, r) in list.take(n)) {
-        final t = teams.firstWhere((t) => t.findPlayer(p.id) != null);
+        final t = allTeams.where((t) => t.findPlayer(p.id) != null).firstOrNull;
+        if (t == null) continue;
         lines.add('$pos • ${p.name} (${t.shortName}) ${r.toStringAsFixed(1)}');
       }
     });

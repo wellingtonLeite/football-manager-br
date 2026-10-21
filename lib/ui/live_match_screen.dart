@@ -85,8 +85,9 @@ class _LiveMatchScreenState extends State<LiveMatchScreen> {
     audio = context.read<AudioService>();
     match = game.userMatchCurrent!;
     userTactic = game.userTactic;
-    home = game.teams.firstWhere((t) => t.id == match.homeId);
-    away = game.teams.firstWhere((t) => t.id == match.awayId);
+    // Adversário pode ser estrangeiro (Libertadores, Sul-Americana...)
+    home = game.teamById(match.homeId);
+    away = game.teamById(match.awayId);
     userIsHome = match.homeId == game.userTeamId;
     homeOn = List<Player>.from(home.startingPlayers);
     homeBench = home.squad.where((p) => !homeOn.contains(p) && !p.unavailable).toList();
@@ -257,8 +258,7 @@ class _LiveMatchScreenState extends State<LiveMatchScreen> {
 
   List<MatchEvent> _genChunk(int from, int to) {
     final uS = game.teamStrength(game.userTeam!, userOn);
-    final aiTeam =
-        game.teams.firstWhere((t) => t.id == (userIsHome ? match.awayId : match.homeId));
+    final aiTeam = userIsHome ? away : home;
     final aS = game.teamStrength(aiTeam, aiOn);
     _updateAiTactic();
     final hs = (userIsHome ? uS : aS) + game.homeAdvantage(home);

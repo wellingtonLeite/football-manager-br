@@ -243,7 +243,7 @@ class JobOffersList extends StatelessWidget {
       children: [
         for (final o in List<JobOffer>.from(offers))
           Builder(builder: (context) {
-            final team = game.teams.where((t) => t.id == o.teamId).firstOrNull;
+            final team = game.teamOrNull(o.teamId);
             if (team == null) return const SizedBox.shrink();
             final pos = game.positionOf(team.id);
             return Card(

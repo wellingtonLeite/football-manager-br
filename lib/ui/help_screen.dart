@@ -26,10 +26,13 @@ class HelpScreen extends StatelessWidget {
     ('🔄', 'Mercado',
         'Compras e empréstimos só nas janelas (pré-temporada e meio do ano); agentes livres a qualquer hora. '
         'Dá para comprar de clubes do exterior (Inglaterra, Espanha, Itália, Alemanha, França, Portugal, Arábia e Argentina). '
-        'Toda compra paga 5% de comissão ao empresário. Ao vender, uma cláusula de revenda garante parte da próxima venda.'),
+        'Toda compra paga 5% de comissão ao empresário. Ao vender, uma cláusula de revenda garante parte da próxima venda. '
+        'Use a busca (nome, posição, idade, preço) e a ordenação para achar reforços. Empréstimo: negocie a taxa e, '
+        'se quiser, a opção de compra. Em Meu Elenco, dá para emprestar seus jogadores a clubes interessados. '
+        'Na primeira temporada, Libertadores e Sul-Americana têm os classificados reais de 2026.'),
     ('🏟️', 'Clube',
         'Treino: foco e intensidade mudam evolução, energia e lesões. Comissão técnica: auxiliar, preparador e olheiro. '
-        'Base: garotos de 15–19 anos; promova os melhores. Olheiros: revelam o potencial (teto) dos jogadores. '
+        'Base: garotos de 15–19 anos; promova os melhores. Olheiros: revelam o potencial (teto) dos jogadores; toque no jogador encontrado para negociar. '
         'Ingressos e sócio-torcedor: preço alto = mais dinheiro por pessoa, menos público.'),
     ('💰', 'Finanças',
         'Receitas: TV, patrocínio, bilheteria, sócios, premiações e vendas. Despesas: salários, comissão técnica, '

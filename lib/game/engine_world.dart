@@ -79,8 +79,11 @@ extension GameWorld on GameState {
   /// Negócios entre clubes da IA (Brasil e exterior) durante as janelas.
   void _aiTransfers() {
     if (!transferWindowOpen || seasonFinished) return;
+    // 1ª janela do jogo: os elencos já são os oficiais atuais, sem embaralhar
+    if (history.isEmpty && currentDay <= (stageDays['WIN:1:end'] ?? 14)) return;
     final buyers = allTeams.where((t) => t.id != userTeamId && (t.league.isNotEmpty || !t.isForeign)).toList();
-    for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < 2; i++) {
+      if (_rng.nextBool()) continue;
       final buyer = buyers[_rng.nextInt(buyers.length)];
       final avg = buyer.averageOverall;
       final pool = allTeams.where((s) => s.id != buyer.id && s.id != userTeamId && s.baseOverall < buyer.baseOverall + 2 && s.squad.length > 20);

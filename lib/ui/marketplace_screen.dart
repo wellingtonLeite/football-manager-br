@@ -86,27 +86,120 @@ class _BuyTabState extends State<_BuyTab> {
   String? position;
   String region = 'BRA';
   bool onlyListed = false;
+  bool onlyScouted = false;
   int? maxPrice;
+  String age = 'Todas';
+  String sort = 'overall';
+  String query = '';
+  bool showFilters = false;
+  final _search = TextEditingController();
 
   static const Map<String, int?> _priceFilters = {
-    'Sem limite': null,
+    'Qualquer preço': null,
+    'Até R\$ 2 mi': 2000000,
     'Até R\$ 5 mi': 5000000,
     'Até R\$ 10 mi': 10000000,
     'Até R\$ 20 mi': 20000000,
     'Até R\$ 50 mi': 50000000,
   };
 
+  static const Map<String, (int?, int?)> _ageFilters = {
+    'Todas': (null, null),
+    'Até 21': (null, 21),
+    'Até 23': (null, 23),
+    '24 a 29': (24, 29),
+    '30+': (30, null),
+  };
+
+  static const Map<String, String> _sorts = {
+    'overall': 'Melhor overall',
+    'potential': 'Maior potencial',
+    'price': 'Mais barato',
+    'age': 'Mais jovem',
+  };
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
+
+  int get _activeFilters =>
+      (position != null ? 1 : 0) + (onlyListed ? 1 : 0) + (onlyScouted ? 1 : 0) + (maxPrice != null ? 1 : 0) + (age != 'Todas' ? 1 : 0);
+
   @override
   Widget build(BuildContext context) {
     final game = context.watch<GameState>();
-    final list = game.marketPlayers(position: position, maxPrice: maxPrice, onlyListed: onlyListed, region: region);
+    final (minAge, maxAge) = _ageFilters[age]!;
+    final list = game.marketPlayers(
+      position: position,
+      maxPrice: maxPrice,
+      onlyListed: onlyListed,
+      region: region,
+      query: query,
+      minAge: minAge,
+      maxAge: maxAge,
+      onlyScouted: onlyScouted,
+      sort: sort,
+    );
     final regions = <String, String>{
-      'BRA': '🇧🇷 Brasil',
+      'BRA': '🇧🇷 Brasil (Séries A–D)',
+      'ALL': '🌍 Todos os clubes',
       for (final e in kLeagueNames.entries) e.key: '${kLeagueCountry[e.key]} • ${e.value}',
       'AME': '🌎 América do Sul (copas)',
     };
     return Column(
       children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 8, 4, 0),
+          child: Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _search,
+                  style: const TextStyle(color: Colors.white),
+                  decoration: InputDecoration(
+                    isDense: true,
+                    hintText: 'Buscar jogador ou clube',
+                    hintStyle: const TextStyle(color: Colors.white38),
+                    prefixIcon: const Icon(Icons.search, color: Colors.white54),
+                    suffixIcon: query.isEmpty
+                        ? null
+                        : IconButton(
+                            icon: const Icon(Icons.close, color: Colors.white54),
+                            onPressed: () => setState(() {
+                              _search.clear();
+                              query = '';
+                            }),
+                          ),
+                    border: const OutlineInputBorder(),
+                  ),
+                  onChanged: (v) => setState(() => query = v),
+                ),
+              ),
+              IconButton(
+                tooltip: 'Filtros',
+                onPressed: () => setState(() => showFilters = !showFilters),
+                icon: Badge(
+                  isLabelVisible: _activeFilters > 0,
+                  label: Text('$_activeFilters'),
+                  child: Icon(showFilters ? Icons.filter_alt_off : Icons.filter_alt, color: Colors.white),
+                ),
+              ),
+              PopupMenuButton<String>(
+                tooltip: 'Ordenar',
+                icon: const Icon(Icons.sort, color: Colors.white),
+                color: kCard,
+                initialValue: sort,
+                onSelected: (v) => setState(() => sort = v),
+                itemBuilder: (_) => [
+                  for (final e in _sorts.entries)
+                    PopupMenuItem(value: e.key, child: Text('${e.key == sort ? '✓ ' : ''}${e.value}')),
+                ],
+              ),
+            ],
+          ),
+        ),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12),
           child: DropdownButton<String>(
@@ -118,33 +211,75 @@ class _BuyTabState extends State<_BuyTab> {
             onChanged: (v) => setState(() => region = v ?? region),
           ),
         ),
-        SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-          child: Row(
-            children: [
-              _chip('Todos', position == null, () => setState(() => position = null)),
-              for (final p in kPositions) _chip(p, position == p, () => setState(() => position = p)),
-            ],
+        if (showFilters) ...[
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+            child: Row(
+              children: [
+                _chip('Todas posições', position == null, () => setState(() => position = null)),
+                for (final p in kPositions) _chip(p, position == p, () => setState(() => position = p)),
+              ],
+            ),
           ),
-        ),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+            child: Row(
+              children: [
+                for (final a in _ageFilters.keys)
+                  _chip(a == 'Todas' ? 'Todas idades' : a, age == a, () => setState(() => age = a)),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: Wrap(
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: 8,
+              children: [
+                FilterChip(
+                  label: const Text('📋 À venda'),
+                  selected: onlyListed,
+                  onSelected: (v) => setState(() => onlyListed = v),
+                ),
+                FilterChip(
+                  label: const Text('🔭 Observados'),
+                  selected: onlyScouted,
+                  onSelected: (v) => setState(() => onlyScouted = v),
+                ),
+                DropdownButton<int?>(
+                  value: maxPrice,
+                  dropdownColor: kCard,
+                  style: const TextStyle(color: Colors.white),
+                  items: [
+                    for (final e in _priceFilters.entries) DropdownMenuItem<int?>(value: e.value, child: Text(e.key)),
+                  ],
+                  onChanged: (v) => setState(() => maxPrice = v),
+                ),
+              ],
+            ),
+          ),
+        ],
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12),
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 2),
           child: Row(
             children: [
-              Switch(value: onlyListed, onChanged: (v) => setState(() => onlyListed = v)),
-              const Text('Só listados', style: TextStyle(color: Colors.white70)),
+              Text('${list.length} jogadores • ${_sorts[sort]}', style: const TextStyle(color: Colors.white38, fontSize: 11)),
               const Spacer(),
-              DropdownButton<int?>(
-                value: maxPrice,
-                dropdownColor: kCard,
-                style: const TextStyle(color: Colors.white),
-                items: [
-                  for (final e in _priceFilters.entries)
-                    DropdownMenuItem<int?>(value: e.value, child: Text(e.key)),
-                ],
-                onChanged: (v) => setState(() => maxPrice = v),
-              ),
+              if (_activeFilters > 0 || query.isNotEmpty)
+                GestureDetector(
+                  onTap: () => setState(() {
+                    position = null;
+                    onlyListed = false;
+                    onlyScouted = false;
+                    maxPrice = null;
+                    age = 'Todas';
+                    query = '';
+                    _search.clear();
+                  }),
+                  child: const Text('Limpar filtros', style: TextStyle(color: Colors.amber, fontSize: 11)),
+                ),
             ],
           ),
         ),
@@ -155,31 +290,7 @@ class _BuyTabState extends State<_BuyTab> {
                   itemCount: list.length,
                   itemBuilder: (context, i) {
                     final (team, p) = list[i];
-                    final asking = game.askingPriceFor(team, p);
-                    return ListTile(
-                      dense: true,
-                      leading: overallAvatar(p),
-                      title: Row(
-                        children: [
-                          if (p.listed)
-                            const Padding(
-                              padding: EdgeInsets.only(right: 4),
-                              child: Text('📋', style: TextStyle(fontSize: 12)),
-                            ),
-                          Expanded(child: Text(p.name, style: const TextStyle(color: Colors.white))),
-                          ClubShield(shortName: team.shortName, size: 16),
-                        ],
-                      ),
-                      subtitle: Text(
-                        '${p.position} • ${p.age} anos • ${team.shortName} • Pedem ${formatMoney(asking)}'
-                        '${game.isScouted(p) ? ' • pot. ${p.potential}' : ''}${p.nat != 'BRA' ? ' • ${p.nat}' : ''}',
-                        style: const TextStyle(color: Colors.white60, fontSize: 11),
-                      ),
-                      onTap: () => showDialog(
-                        context: context,
-                        builder: (_) => _OfferDialog(seller: team, player: p),
-                      ),
-                    );
+                    return MarketPlayerTile(team: team, player: p);
                   },
                 ),
         ),
@@ -200,21 +311,66 @@ class _BuyTabState extends State<_BuyTab> {
       );
 }
 
-class _OfferDialog extends StatefulWidget {
-  final Team seller;
+/// Linha de jogador do mercado (também usada pelos olheiros).
+class MarketPlayerTile extends StatelessWidget {
+  final Team team;
   final Player player;
-  const _OfferDialog({required this.seller, required this.player});
+  const MarketPlayerTile({super.key, required this.team, required this.player});
 
   @override
-  State<_OfferDialog> createState() => _OfferDialogState();
+  Widget build(BuildContext context) {
+    final game = context.read<GameState>();
+    final p = player;
+    final asking = game.askingPriceFor(team, p);
+    final scouted = game.isScouted(p);
+    return ListTile(
+      dense: true,
+      leading: overallAvatar(p),
+      title: Row(
+        children: [
+          if (p.listed) const Text('📋 ', style: TextStyle(fontSize: 12)),
+          Expanded(
+            child: Text(p.name, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+          ),
+          if (scouted)
+            Container(
+              margin: const EdgeInsets.only(right: 6),
+              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+              decoration: BoxDecoration(color: Colors.amber.withValues(alpha: 0.2), borderRadius: BorderRadius.circular(4)),
+              child: Text('pot ${p.potential}', style: const TextStyle(color: Colors.amber, fontSize: 10)),
+            ),
+          ClubShield(shortName: team.shortName, size: 16),
+        ],
+      ),
+      subtitle: Text(
+        '${p.position} • ${p.age} anos • ${p.nat} • ${team.name}\n'
+        'Pedem ${formatMoney(asking)} • salário ${formatMoney(p.wage)}',
+        style: const TextStyle(color: Colors.white60, fontSize: 11),
+      ),
+      isThreeLine: true,
+      onTap: () => showDialog(context: context, builder: (_) => OfferDialog(seller: team, player: p)),
+    );
+  }
 }
 
-class _OfferDialogState extends State<_OfferDialog> {
+class OfferDialog extends StatefulWidget {
+  final Team seller;
+  final Player player;
+  const OfferDialog({super.key, required this.seller, required this.player});
+
+  @override
+  State<OfferDialog> createState() => _OfferDialogState();
+}
+
+class _OfferDialogState extends State<OfferDialog> {
   late int fee;
   late int wage;
   int bonus = 0;
   int years = 3;
-  bool loanOption = false;
+  bool loanMode = false;
+  bool loanOption = true;
+  late int loanFeeOffer;
+  late int optionPrice;
   late int asking;
   late int demand;
 
@@ -226,6 +382,8 @@ class _OfferDialogState extends State<_OfferDialog> {
     demand = game.wageDemand(widget.player, from: widget.seller);
     fee = asking;
     wage = demand;
+    loanFeeOffer = game.loanFee(widget.player) * 2;
+    optionPrice = game.suggestedOptionPrice(widget.player);
   }
 
   @override
@@ -234,98 +392,137 @@ class _OfferDialogState extends State<_OfferDialog> {
     final p = widget.player;
     final feeMax = max(p.releaseClause, asking * 2);
     final starter = widget.seller.startingIds.contains(p.id);
+    final baseLoan = game.loanFee(p);
+    final wantedLoan = max(50000, baseLoan * (loanOption ? 2 : 1));
+    final loanMin = roundTo(wantedLoan * 0.4, 50000);
+    final loanMax = max(wantedLoan * 2, loanMin + 50000);
     return AlertDialog(
       backgroundColor: kCard,
-      title: Text('${p.name} (${p.overall})', style: const TextStyle(color: Colors.white)),
+      title: Row(
+        children: [
+          ClubShield(shortName: widget.seller.shortName, size: 26),
+          const SizedBox(width: 8),
+          Expanded(child: Text('${p.name} (${p.overall})', style: const TextStyle(color: Colors.white))),
+        ],
+      ),
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             infoRow('Clube', widget.seller.name),
-            infoRow('Posição / idade', '${p.position} • ${p.age} anos'),
+            infoRow('Posição / idade', '${p.position} • ${p.age} anos • ${p.nat}'),
             infoRow('Valor de mercado', formatMoney(p.marketValue)),
-            infoRow('Preço pedido', formatMoney(asking)),
-            infoRow('Multa rescisória', formatMoney(p.releaseClause)),
-            infoRow('Salário atual', '${formatMoney(p.wage)}/mês'),
             infoRow('Situação', starter ? 'Titular no clube' : (p.listed ? 'Na lista de transferências' : 'Reserva')),
+            infoRow('Salário atual', '${formatMoney(p.wage)}/mês'),
             infoRow('Potencial', game.isScouted(p) ? '${p.potential}' : '? (observe o jogador)'),
-            infoRow('Nacionalidade', p.nat),
             if (!game.isScouted(p))
               TextButton(
                 onPressed: () => setState(() => showResult(context, game.scoutPlayer(p.id))),
                 child: const Text('🔭 Mandar observar (R\$ 50 mil)'),
               ),
-            infoRow('Comissão do empresário (5%)', formatMoney(game.agentFee(fee))),
-            SwitchListTile(
-              contentPadding: EdgeInsets.zero,
-              value: loanOption,
-              onChanged: (v) => setState(() => loanOption = v),
-              title: const Text('Empréstimo com opção de compra', style: TextStyle(color: Colors.white70, fontSize: 13)),
-              subtitle: Text('Taxa dobrada; compra depois por ${formatMoney(roundTo(p.marketValue * 1.1, 50000))}',
-                  style: const TextStyle(color: Colors.white38, fontSize: 11)),
+            const SizedBox(height: 8),
+            SegmentedButton<bool>(
+              segments: const [
+                ButtonSegment(value: false, label: Text('Comprar'), icon: Icon(Icons.shopping_cart)),
+                ButtonSegment(value: true, label: Text('Empréstimo'), icon: Icon(Icons.swap_horiz)),
+              ],
+              selected: {loanMode},
+              onSelectionChanged: (v) => setState(() => loanMode = v.first),
             ),
             const Divider(color: Colors.white24),
-            MoneySlider(
-              label: 'Proposta ao clube',
-              value: fee,
-              min: roundTo(asking * 0.5, 50000),
-              max: feeMax,
-              step: 50000,
-              onChanged: (v) => setState(() => fee = v),
-            ),
-            TextButton(
-              onPressed: () => setState(() => fee = p.releaseClause),
-              child: Text('Pagar a multa (${formatMoney(p.releaseClause)})'),
-            ),
-            MoneySlider(
-              label: 'Salário oferecido (pede ${formatMoney(demand)})',
-              value: wage,
-              min: roundTo(demand * 0.6, 1000),
-              max: roundTo(demand * 2, 1000),
-              step: 1000,
-              onChanged: (v) => setState(() => wage = v),
-            ),
-            MoneySlider(
-              label: 'Luvas',
-              value: bonus,
-              min: 0,
-              max: roundTo(demand * 12, 10000),
-              step: 10000,
-              onChanged: (v) => setState(() => bonus = v),
-            ),
-            YearsPicker(value: years, onChanged: (v) => setState(() => years = v)),
-            Text(
-              'Total agora: ${formatMoney(fee + bonus)}',
-              style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold),
-            ),
+            if (!loanMode) ...[
+              infoRow('Preço pedido', formatMoney(asking)),
+              infoRow('Multa rescisória', formatMoney(p.releaseClause)),
+              MoneySlider(
+                label: 'Proposta ao clube',
+                value: fee,
+                min: roundTo(asking * 0.5, 50000),
+                max: feeMax,
+                step: 50000,
+                onChanged: (v) => setState(() => fee = v),
+              ),
+              TextButton(
+                onPressed: () => setState(() => fee = p.releaseClause),
+                child: Text('Pagar a multa (${formatMoney(p.releaseClause)})'),
+              ),
+              MoneySlider(
+                label: 'Salário oferecido (pede ${formatMoney(demand)})',
+                value: wage,
+                min: roundTo(demand * 0.6, 1000),
+                max: roundTo(demand * 2, 1000),
+                step: 1000,
+                onChanged: (v) => setState(() => wage = v),
+              ),
+              MoneySlider(
+                label: 'Luvas',
+                value: bonus,
+                min: 0,
+                max: roundTo(demand * 12, 10000),
+                step: 10000,
+                onChanged: (v) => setState(() => bonus = v),
+              ),
+              YearsPicker(value: years, onChanged: (v) => setState(() => years = v)),
+              infoRow('Comissão do empresário (5%)', formatMoney(game.agentFee(fee))),
+              Text(
+                'Total agora: ${formatMoney(fee + bonus + game.agentFee(fee))}',
+                style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold),
+              ),
+            ] else ...[
+              const Text('Até o fim da temporada. O salário do jogador fica por sua conta.',
+                  style: TextStyle(color: Colors.white54, fontSize: 12)),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                value: loanOption,
+                onChanged: (v) => setState(() {
+                  loanOption = v;
+                  loanFeeOffer = max(50000, baseLoan * (v ? 2 : 1));
+                }),
+                title: const Text('Com opção de compra', style: TextStyle(color: Colors.white70, fontSize: 13)),
+                subtitle: const Text('Você decide no fim do empréstimo se compra o jogador.',
+                    style: TextStyle(color: Colors.white38, fontSize: 11)),
+              ),
+              MoneySlider(
+                label: 'Taxa de empréstimo (esperam ${formatMoney(wantedLoan)})',
+                value: loanFeeOffer.clamp(loanMin, loanMax).toInt(),
+                min: loanMin,
+                max: loanMax,
+                step: 50000,
+                onChanged: (v) => setState(() => loanFeeOffer = v),
+              ),
+              if (loanOption)
+                MoneySlider(
+                  label: 'Valor da opção de compra (sugerido ${formatMoney(game.suggestedOptionPrice(p))})',
+                  value: optionPrice,
+                  min: roundTo(p.marketValue * 0.6, 50000),
+                  max: max(roundTo(p.marketValue * 2, 50000), roundTo(p.marketValue * 0.6, 50000) + 50000),
+                  step: 50000,
+                  onChanged: (v) => setState(() => optionPrice = v),
+                ),
+              Text(
+                starter ? '⚠️ Titular: o clube dificilmente empresta.' : 'Reserva: o clube tende a aceitar.',
+                style: TextStyle(color: starter ? Colors.orangeAccent : Colors.greenAccent, fontSize: 12),
+              ),
+              Text('Total agora: ${formatMoney(loanFeeOffer.clamp(loanMin, loanMax).toInt())}',
+                  style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold)),
+            ],
           ],
         ),
       ),
       actions: [
         TextButton(onPressed: () => Navigator.pop(context), child: const Text('Fechar')),
-        TextButton(
-          onPressed: () {
-            final r = game.proposeLoan(p.id, withOption: loanOption);
-            showResult(context, r);
-            Navigator.pop(context);
-          },
-          child: Text('Empréstimo (${formatMoney(game.loanFee(p) * (loanOption ? 2 : 1))})'),
-        ),
         ElevatedButton(
           style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white),
           onPressed: () {
-            final r = game.proposeTransfer(
-              playerId: p.id,
-              fee: fee,
-              wage: wage,
-              signingBonus: bonus,
-              years: years,
-            );
+            final r = loanMode
+                ? game.proposeLoan(p.id,
+                    fee: loanFeeOffer.clamp(loanMin, loanMax).toInt(), withOption: loanOption, optionPrice: optionPrice)
+                : game.proposeTransfer(playerId: p.id, fee: fee, wage: wage, signingBonus: bonus, years: years);
             showResult(context, r);
-            Navigator.pop(context);
+            // Recusa: mantém a tela aberta para ajustar a proposta
+            if (r.success) Navigator.pop(context);
           },
-          child: const Text('Enviar proposta'),
+          child: Text(loanMode ? 'Propor empréstimo' : 'Enviar proposta'),
         ),
       ],
     );
@@ -358,22 +555,22 @@ class _FreeAgentsTab extends StatelessWidget {
             '${p.position} • ${p.age} anos • pede ${formatMoney(game.wageDemand(p))}/mês • sem taxa',
             style: const TextStyle(color: Colors.white60, fontSize: 11),
           ),
-          onTap: () => showDialog(context: context, builder: (_) => _FreeAgentDialog(player: p)),
+          onTap: () => showDialog(context: context, builder: (_) => FreeAgentDialog(player: p)),
         );
       },
     );
   }
 }
 
-class _FreeAgentDialog extends StatefulWidget {
+class FreeAgentDialog extends StatefulWidget {
   final Player player;
-  const _FreeAgentDialog({required this.player});
+  const FreeAgentDialog({super.key, required this.player});
 
   @override
-  State<_FreeAgentDialog> createState() => _FreeAgentDialogState();
+  State<FreeAgentDialog> createState() => _FreeAgentDialogState();
 }
 
-class _FreeAgentDialogState extends State<_FreeAgentDialog> {
+class _FreeAgentDialogState extends State<FreeAgentDialog> {
   late int demand;
   late int wage;
   int years = 2;
@@ -445,6 +642,30 @@ class _MySquadTab extends StatelessWidget {
           ),
           for (final o in List<TransferOffer>.from(game.incomingOffers)) _offerCard(context, game, t, o),
         ],
+        if (game.loanedOut.isNotEmpty) ...[
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: sectionTitle('EMPRESTADOS A OUTROS CLUBES'),
+          ),
+          for (final (club, p) in game.loanedOut)
+            ListTile(
+              dense: true,
+              leading: overallAvatar(p),
+              title: Text(p.name, style: const TextStyle(color: Colors.white)),
+              subtitle: Text(
+                '${p.position} • ${p.age} anos • no ${club.name} até o fim da temporada'
+                '${game.loanOptions[p.id] != null ? ' • opção ${formatMoney(game.loanOptions[p.id]!)}' : ''}',
+                style: const TextStyle(color: Colors.white60, fontSize: 11),
+              ),
+              trailing: ClubShield(shortName: club.shortName, size: 22),
+              onTap: () async {
+                final ok = await confirmDialog(context, 'Trazer ${p.name} de volta?',
+                    'O empréstimo ao ${club.name} será encerrado agora (só com a janela aberta).');
+                if (!ok || !context.mounted) return;
+                showResult(context, game.recallLoan(p.id));
+              },
+            ),
+        ],
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12),
           child: sectionTitle('MEU ELENCO'),
@@ -484,7 +705,7 @@ class _MySquadTab extends StatelessWidget {
 
   Widget _offerCard(BuildContext context, GameState game, Team t, TransferOffer o) {
     final p = t.findPlayer(o.playerId);
-    final buyer = game.teams.where((x) => x.id == o.buyerId).firstOrNull;
+    final buyer = game.teamOrNull(o.buyerId);
     if (p == null || buyer == null) return const SizedBox.shrink();
     return Card(
       color: kCard,
@@ -581,6 +802,17 @@ class _MySquadTab extends StatelessWidget {
                   } else {
                     showDialog(context: context, builder: (_) => _ListDialog(player: p));
                   }
+                },
+              ),
+            if (!p.onLoan)
+              ListTile(
+                leading: const Icon(Icons.swap_horiz, color: Colors.orangeAccent),
+                title: const Text('Emprestar a outro clube', style: TextStyle(color: Colors.white)),
+                subtitle: const Text('Ele joga fora até o fim da temporada e o outro clube paga o salário.',
+                    style: TextStyle(color: Colors.white60, fontSize: 12)),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  showDialog(context: context, builder: (_) => _LoanOutDialog(player: p));
                 },
               ),
             if (!p.onLoan)
@@ -746,6 +978,118 @@ class _RenewDialogState extends State<_RenewDialog> {
             Navigator.pop(context);
           },
           child: const Text('Propor'),
+        ),
+      ],
+    );
+  }
+}
+
+/// Emprestar um jogador do nosso elenco: escolhe o clube interessado e as condições.
+class _LoanOutDialog extends StatefulWidget {
+  final Player player;
+  const _LoanOutDialog({required this.player});
+
+  @override
+  State<_LoanOutDialog> createState() => _LoanOutDialogState();
+}
+
+class _LoanOutDialogState extends State<_LoanOutDialog> {
+  Team? club;
+  int fee = 0;
+  bool withOption = false;
+  late int optionPrice;
+
+  @override
+  void initState() {
+    super.initState();
+    optionPrice = context.read<GameState>().suggestedOptionPrice(widget.player);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final game = context.read<GameState>();
+    final p = widget.player;
+    final suitors = game.loanSuitors(p);
+    final offered = suitors.where((s) => s.$1.id == club?.id).firstOrNull?.$2 ?? 0;
+    return AlertDialog(
+      backgroundColor: kCard,
+      title: Text('Emprestar ${p.name}', style: const TextStyle(color: Colors.white)),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              game.transferWindowOpen
+                  ? 'Clubes interessados (o salário de ${formatMoney(p.wage)}/mês passa para eles):'
+                  : '🔴 ${game.windowLabel}. Empréstimos só com a janela aberta.',
+              style: const TextStyle(color: Colors.white70, fontSize: 12),
+            ),
+            if (suitors.isEmpty)
+              const Padding(
+                padding: EdgeInsets.all(8),
+                child: Text('Nenhum clube interessado agora.', style: TextStyle(color: Colors.white54)),
+              ),
+            for (final (t, f) in suitors)
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                dense: true,
+                selected: club?.id == t.id,
+                selectedTileColor: Colors.white10,
+                leading: ClubShield(shortName: t.shortName, size: 22),
+                title: Text(t.name, style: const TextStyle(color: Colors.white)),
+                subtitle: Text('${t.isForeign ? t.country : 'Série ${'ABCD'[t.division - 1]}'} • oferece ${formatMoney(f)}',
+                    style: const TextStyle(color: Colors.white60, fontSize: 11)),
+                trailing: Icon(club?.id == t.id ? Icons.radio_button_checked : Icons.radio_button_off,
+                    color: club?.id == t.id ? Colors.orangeAccent : Colors.white38),
+                onTap: () => setState(() {
+                  club = t;
+                  fee = f;
+                }),
+              ),
+            if (club != null) ...[
+              const Divider(color: Colors.white24),
+              MoneySlider(
+                label: 'Taxa pedida (oferta ${formatMoney(offered)})',
+                value: fee,
+                min: 0,
+                max: max(offered * 2, 100000),
+                step: 50000,
+                onChanged: (v) => setState(() => fee = v),
+              ),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                value: withOption,
+                onChanged: (v) => setState(() => withOption = v),
+                title: const Text('Incluir opção de compra', style: TextStyle(color: Colors.white70, fontSize: 13)),
+                subtitle: const Text('No fim do empréstimo o clube pode comprá-lo por esse valor.',
+                    style: TextStyle(color: Colors.white38, fontSize: 11)),
+              ),
+              if (withOption)
+                MoneySlider(
+                  label: 'Valor da opção',
+                  value: optionPrice,
+                  min: roundTo(p.marketValue * 0.6, 50000),
+                  max: max(roundTo(p.marketValue * 2, 50000), roundTo(p.marketValue * 0.6, 50000) + 50000),
+                  step: 50000,
+                  onChanged: (v) => setState(() => optionPrice = v),
+                ),
+            ],
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')),
+        ElevatedButton(
+          style: ElevatedButton.styleFrom(backgroundColor: Colors.orange, foregroundColor: Colors.white),
+          onPressed: club == null
+              ? null
+              : () {
+                  final r = game.loanOut(p.id, club!.id, fee: fee, withOption: withOption, optionPrice: optionPrice);
+                  showResult(context, r);
+                  if (r.success) Navigator.pop(context);
+                },
+          child: const Text('Emprestar'),
         ),
       ],
     );

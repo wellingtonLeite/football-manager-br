@@ -3,6 +3,7 @@ import 'models.dart';
 import 'economy.dart';
 import 'data_world.dart';
 import 'data_stars.dart';
+import 'data_squads.dart';
 
 export 'data_world.dart' show WorldClub, kWorldClubs, kLeagueNames, kLeagueCountry;
 
@@ -723,6 +724,9 @@ const Map<String, int> kSquadTargets = {
 };
 
 /// Elenco menor para clubes estrangeiros (só jogam as copas).
+/// Mínimo por posição quando o clube tem elenco oficial.
+const Map<String, int> kMinSquadTargets = {'GOL': 2, 'ZAG': 2, 'LAT': 2, 'VOL': 2, 'MEI': 2, 'ATA': 2};
+
 const Map<String, int> kForeignSquadTargets = {
   'GOL': 2,
   'ZAG': 3,
@@ -802,6 +806,29 @@ Player playerFromEntry(Random rng, String id, String entry, int base, String clu
   );
 }
 
+/// Atleta do elenco oficial ("POS|Nome|NAC|ano de nascimento|overall"; 0 = desconhecido).
+Player officialPlayer(Random rng, String id, String entry, int base) {
+  final parts = entry.split('|');
+  final name = parts[1];
+  final nat = parts.length > 2 && parts[2].isNotEmpty ? parts[2] : 'BRA';
+  final born = parts.length > 3 ? int.tryParse(parts[3]) ?? 0 : 0;
+  final rated = parts.length > 4 ? int.tryParse(parts[4]) ?? 0 : 0;
+  final age = born > 1960 ? 2026 - born : 19 + rng.nextInt(14);
+  // Sem nota curada: estimativa pelo nível do clube (garotos da base abaixo, veteranos um pouco abaixo)
+  final ageAdj = age <= 19 ? -9 : age <= 21 ? -6 : age <= 23 ? -3 : age >= 34 ? -2 : 0;
+  final overall = rated > 0 ? rated : (base - 2 + ageAdj + rng.nextInt(7) - 3).clamp(48, 88).toInt();
+  return Player(
+    id: id,
+    name: name,
+    position: parts[0],
+    age: age,
+    overall: overall,
+    nat: nat,
+    contractYears: 1 + rng.nextInt(4),
+    potential: rollPotential(rng, overall, age),
+  );
+}
+
 int _idSeq = 0;
 
 /// Gera um id único para atletas criados durante a carreira.
@@ -866,28 +893,38 @@ Team buildTeam(ClubInfo c, Random rng) {
   final List<Star> stars = kStars[c.shortName] ?? const <Star>[];
   final String tid = c.shortName.toLowerCase();
   final bool foreign = c.division == 0;
-  final targets = foreign ? kForeignSquadTargets : kSquadTargets;
   final List<Player> squad = [];
   int n = 1;
 
-  for (final s in stars) {
-    squad.add(Player(
-      id: '${tid}_p$n',
-      name: s.name,
-      position: s.position,
-      age: s.age,
-      overall: s.overall,
-      contractYears: 1 + rng.nextInt(4),
-      nat: kForeignNationality[s.name] ?? (foreign ? c.country : 'BRA'),
-      potential: rollPotential(rng, s.overall, s.age),
-    ));
-    n++;
-  }
-  // Elencos reais das Séries B, C e D (Wikipédia)
-  if (stars.isEmpty) {
-    for (final e in kRealSquadsBR[c.shortName] ?? const <String>[]) {
-      squad.add(playerFromEntry(rng, '${tid}_p$n', e, base, c.shortName));
+  final official = foreign ? null : kOfficialSquads[c.shortName];
+  // Elenco oficial: só completa posições quase vazias (sem inventar jogadores à toa)
+  final targets = official != null ? kMinSquadTargets : (foreign ? kForeignSquadTargets : kSquadTargets);
+  if (official != null) {
+    // Elenco oficial completo (Wikipédia/Wikidata, out/2026), com as notas curadas já casadas
+    for (final e in official) {
+      squad.add(officialPlayer(rng, '${tid}_p$n', e, base));
       n++;
+    }
+  } else {
+    for (final s in stars) {
+      squad.add(Player(
+        id: '${tid}_p$n',
+        name: s.name,
+        position: s.position,
+        age: s.age,
+        overall: s.overall,
+        contractYears: 1 + rng.nextInt(4),
+        nat: kForeignNationality[s.name] ?? (foreign ? c.country : 'BRA'),
+        potential: rollPotential(rng, s.overall, s.age),
+      ));
+      n++;
+    }
+    // Elencos das Séries B, C e D sem dados oficiais completos
+    if (stars.isEmpty) {
+      for (final e in kRealSquadsBR[c.shortName] ?? const <String>[]) {
+        squad.add(playerFromEntry(rng, '${tid}_p$n', e, base, c.shortName));
+        n++;
+      }
     }
   }
 

@@ -3,7 +3,9 @@ import 'package:provider/provider.dart';
 import '../game/engine.dart';
 import '../game/models.dart';
 import '../game/economy.dart';
+import '../game/data.dart';
 import 'widgets.dart';
+import 'marketplace_screen.dart';
 
 /// Treino, comissão técnica, base, olheiros, ingressos e sócios.
 class ClubScreen extends StatelessWidget {
@@ -181,22 +183,36 @@ class _AcademyTab extends StatelessWidget {
   }
 }
 
-class _ScoutTab extends StatelessWidget {
+class _ScoutTab extends StatefulWidget {
   const _ScoutTab();
+
+  @override
+  State<_ScoutTab> createState() => _ScoutTabState();
+}
+
+class _ScoutTabState extends State<_ScoutTab> {
+  bool onlyPromises = true;
+  String? position;
 
   @override
   Widget build(BuildContext context) {
     final game = context.watch<GameState>();
     final regions = game.scoutRegions;
-    final pool = <(String, Player)>[];
+    final pool = <(Team?, Player)>[];
     for (final t in game.allTeams) {
-      if (t.id == game.userTeamId) continue;
+      if (game.isHumanTeam(t.id)) continue;
       for (final p in t.squad) {
-        if (game.scouted.contains(p.id) && p.potential - p.overall >= 6 && p.age <= 23) pool.add((t.name, p));
+        if (!game.scouted.contains(p.id) || p.onLoan) continue;
+        if (onlyPromises && !(p.potential - p.overall >= 6 && p.age <= 23)) continue;
+        if (position != null && p.position != position) continue;
+        pool.add((t, p));
       }
     }
     for (final p in game.freeAgents) {
-      if (game.scouted.contains(p.id) && p.potential - p.overall >= 6) pool.add(('Agente livre', p));
+      if (!game.scouted.contains(p.id)) continue;
+      if (onlyPromises && p.potential - p.overall < 6) continue;
+      if (position != null && p.position != position) continue;
+      pool.add((null, p));
     }
     pool.sort((a, b) => b.$2.potential.compareTo(a.$2.potential));
     return ListView(
@@ -216,16 +232,50 @@ class _ScoutTab extends StatelessWidget {
         ),
         Text('Jogadores observados: ${game.scouted.length}. O olheiro-chefe (Comissão) aumenta o ritmo.',
             style: const TextStyle(color: Colors.white38, fontSize: 12)),
-        sectionTitle('PROMESSAS ENCONTRADAS'),
-        if (pool.isEmpty) const Text('Nenhuma promessa ainda. Volte em alguns dias.', style: TextStyle(color: Colors.white54)),
-        for (final (club, p) in pool.take(40))
-          ListTile(
-            dense: true,
-            leading: overallAvatar(p),
-            title: Text(p.name, style: const TextStyle(color: Colors.white)),
-            subtitle: Text('${p.position} • ${p.age} anos • $club • potencial ${p.potential}',
-                style: const TextStyle(color: Colors.white60, fontSize: 11)),
+        const SizedBox(height: 8),
+        SegmentedButton<bool>(
+          segments: const [
+            ButtonSegment(value: true, label: Text('Promessas')),
+            ButtonSegment(value: false, label: Text('Todos observados')),
+          ],
+          selected: {onlyPromises},
+          onSelectionChanged: (v) => setState(() => onlyPromises = v.first),
+        ),
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.symmetric(vertical: 6),
+          child: Row(
+            children: [
+              for (final pos in [null, ...kPositions])
+                Padding(
+                  padding: const EdgeInsets.only(right: 6),
+                  child: ChoiceChip(
+                    label: Text(pos ?? 'Todas'),
+                    selected: position == pos,
+                    selectedColor: Colors.green,
+                    labelStyle: const TextStyle(color: Colors.white, fontSize: 12),
+                    onSelected: (_) => setState(() => position = pos),
+                  ),
+                ),
+            ],
           ),
+        ),
+        sectionTitle('${onlyPromises ? 'PROMESSAS ENCONTRADAS' : 'JOGADORES OBSERVADOS'} (${pool.length})'),
+        const Text('Toque no jogador para negociar.', style: TextStyle(color: Colors.white38, fontSize: 11)),
+        if (pool.isEmpty) const Text('Nenhum jogador ainda. Volte em alguns dias.', style: TextStyle(color: Colors.white54)),
+        for (final (club, p) in pool.take(80))
+          if (club != null)
+            MarketPlayerTile(team: club, player: p)
+          else
+            ListTile(
+              dense: true,
+              leading: overallAvatar(p),
+              title: Text(p.name, style: const TextStyle(color: Colors.white)),
+              subtitle: Text('${p.position} • ${p.age} anos • agente livre • potencial ${p.potential}',
+                  style: const TextStyle(color: Colors.white60, fontSize: 11)),
+              trailing: const Icon(Icons.chevron_right, color: Colors.white38),
+              onTap: () => showDialog(context: context, builder: (_) => FreeAgentDialog(player: p)),
+            ),
       ],
     );
   }

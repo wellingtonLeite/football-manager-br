@@ -10,7 +10,18 @@ extension GameMarket on GameState {
   }
 
   /// Jogadores de outros clubes, do mais forte para o mais fraco.
-  List<(Team, Player)> marketPlayers({String? position, int? maxPrice, bool onlyListed = false, String region = 'BRA'}) {
+  List<(Team, Player)> marketPlayers({
+    String? position,
+    int? maxPrice,
+    bool onlyListed = false,
+    String region = 'BRA',
+    String query = '',
+    int? minAge,
+    int? maxAge,
+    bool onlyScouted = false,
+    String sort = 'overall',
+  }) {
+    final q = _fold(query.trim());
     final result = <(Team, Player)>[];
     final source = switch (region) {
       'BRA' => teams,
@@ -24,12 +35,38 @@ extension GameMarket on GameState {
         if (p.onLoan) continue;
         if (position != null && p.position != position) continue;
         if (onlyListed && !p.listed) continue;
+        if (minAge != null && p.age < minAge) continue;
+        if (maxAge != null && p.age > maxAge) continue;
+        if (onlyScouted && !isScouted(p)) continue;
+        if (q.isNotEmpty && !_fold(p.name).contains(q) && !_fold(t.name).contains(q)) continue;
         if (maxPrice != null && askingPriceFor(t, p) > maxPrice) continue;
         result.add((t, p));
       }
     }
-    result.sort((a, b) => b.$2.overall.compareTo(a.$2.overall));
+    int potentialOf(Player p) => isScouted(p) ? p.potential : p.overall;
+    switch (sort) {
+      case 'potential':
+        result.sort((a, b) => potentialOf(b.$2).compareTo(potentialOf(a.$2)));
+      case 'price':
+        result.sort((a, b) => askingPriceFor(a.$1, a.$2).compareTo(askingPriceFor(b.$1, b.$2)));
+      case 'age':
+        result.sort((a, b) => a.$2.age != b.$2.age ? a.$2.age.compareTo(b.$2.age) : b.$2.overall.compareTo(a.$2.overall));
+      default:
+        result.sort((a, b) => b.$2.overall.compareTo(a.$2.overall));
+    }
     return result;
+  }
+
+  /// Minúsculas sem acento, para a busca por nome.
+  static String _fold(String s) {
+    const from = 'áàâãäéèêëíìîïóòôõöúùûüçñ';
+    const to = 'aaaaaeeeeiiiiooooouuuucn';
+    final b = StringBuffer();
+    for (final ch in s.toLowerCase().split('')) {
+      final i = from.indexOf(ch);
+      b.write(i >= 0 ? to[i] : ch);
+    }
+    return b.toString();
   }
 
   /// Valor pedido pelo clube da IA para negociar o atleta.
@@ -150,7 +187,12 @@ extension GameMarket on GameState {
 
   int loanFee(Player p) => roundTo(p.marketValue * 0.1, 50000);
 
-  TransferResult proposeLoan(String playerId, {bool withOption = false}) {
+  /// Valor sugerido para a opção de compra num empréstimo.
+  int suggestedOptionPrice(Player p) => roundTo(p.marketValue * 1.1, 50000);
+
+  /// Empréstimo de um jogador de outro clube até o fim da temporada.
+  /// [fee] = taxa oferecida; com [withOption], [optionPrice] = valor para comprar depois.
+  TransferResult proposeLoan(String playerId, {int? fee, bool withOption = false, int? optionPrice}) {
     final user = userTeam;
     if (user == null || !managesClub) return const TransferResult(false, 'Você não administra um clube.');
     final seller = ownerOf(playerId);
@@ -165,30 +207,135 @@ extension GameMarket on GameState {
       return TransferResult(false, 'O ${seller.name} não aceita reduzir mais o elenco.');
     }
     if (!transferWindowOpen) return TransferResult(false, '$windowLabel.');
-    final fee = loanFee(p) * (withOption ? 2 : 1);
-    if (user.balance < fee) {
-      return TransferResult(false, 'Caixa insuficiente para a taxa de ${formatMoney(fee)}.');
+    final wantedFee = loanFee(p) * (withOption ? 2 : 1);
+    final offeredFee = fee ?? wantedFee;
+    final wantedOption = suggestedOptionPrice(p);
+    final offeredOption = optionPrice ?? wantedOption;
+    if (user.balance < offeredFee) {
+      return TransferResult(false, 'Caixa insuficiente para a taxa de ${formatMoney(offeredFee)}.');
     }
     final starter = seller.startingIds.contains(p.id);
-    final chance = (starter ? 0.15 : 0.75) + (user.stars - seller.stars) * 0.05;
+    double chance = (starter ? 0.15 : 0.75) + (p.listed ? 0.15 : 0) + (user.stars - seller.stars) * 0.05;
+    // Taxa e opção abaixo do esperado reduzem a chance; acima, aumentam
+    chance *= (offeredFee / max(1, wantedFee)).clamp(0.2, 1.4);
+    if (withOption) chance *= ((offeredOption / wantedOption - 0.7) / 0.3).clamp(0.05, 1.3);
     if (_rng.nextDouble() > chance) {
-      return TransferResult(false, 'O ${seller.name} não quer emprestar ${p.name}.');
+      _notify();
+      final need = starter ? ' Ele é titular: o clube resiste a emprestar.' : '';
+      return TransferResult(false,
+          'O ${seller.name} recusou.$need Eles esperam taxa de ${formatMoney(wantedFee)}'
+          '${withOption ? ' e opção de compra de ${formatMoney(wantedOption)}' : ''}.');
     }
     seller.squad.remove(p);
     seller.startingIds.remove(p.id);
-    seller.balance += fee;
-    _debit(user, fee, 'Transferências', 'Empréstimo de ${p.name} (${seller.name})');
+    seller.balance += offeredFee;
+    _debit(user, offeredFee, 'Transferências', 'Empréstimo de ${p.name} (${seller.name})');
     p
       ..loanFromTeamId = seller.id
       ..listed = false
       ..askingPrice = 0;
     user.squad.add(p);
-    if (withOption) loanOptions[p.id] = roundTo(p.marketValue * 1.1, 50000);
+    if (withOption) loanOptions[p.id] = offeredOption;
     _addNews('🔁 ${p.name} chega ao ${user.name} por empréstimo até o fim da temporada'
-        '${withOption ? ' (opção de compra: ${formatMoney(loanOptions[p.id]!)})' : ''}.');
+        '${withOption ? ' (opção de compra: ${formatMoney(offeredOption)})' : ''}.');
     _changed();
     return TransferResult(true,
         '${p.name} emprestado até o fim da temporada. Salário de ${formatMoney(p.wage)}/mês por sua conta.');
+  }
+
+  // ---------------------------------------------------------------------------
+  // Emprestar jogadores do nosso elenco
+  // ---------------------------------------------------------------------------
+
+  /// Clubes interessados em receber [p] por empréstimo, com a taxa que oferecem.
+  /// A lista muda a cada data (semente fixa no dia para não mudar com a tela aberta).
+  List<(Team, int)> loanSuitors(Player p) {
+    final user = userTeam;
+    if (user == null) return const [];
+    final rng = Random(p.id.hashCode ^ (currentDay * 7919) ^ seasonYear);
+    final cands = allTeams
+        .where((t) => t.id != user.id && !isHumanTeam(t.id) && (!t.isForeign || t.league.isNotEmpty) &&
+            t.squad.length < GameState.maxSquadSize &&
+            p.overall >= t.averageOverall - 6 && p.overall <= t.averageOverall + 10)
+        .toList()
+      ..shuffle(rng);
+    // Prefere clubes do Brasil
+    cands.sort((a, b) => (a.isForeign ? 1 : 0).compareTo(b.isForeign ? 1 : 0));
+    return [
+      for (final t in cands.take(6))
+        (t, roundTo(loanFee(p) * (0.5 + rng.nextDouble() * 0.7), 50000)),
+    ];
+  }
+
+  /// Jogadores do clube do usuário que estão emprestados a outros clubes.
+  List<(Team, Player)> get loanedOut {
+    final id = userTeamId;
+    if (id == null) return const [];
+    return [
+      for (final t in allTeams)
+        if (t.id != id)
+          for (final p in t.squad)
+            if (p.loanFromTeamId == id) (t, p),
+    ];
+  }
+
+  /// Empresta [playerId] ao clube [toTeamId] até o fim da temporada.
+  TransferResult loanOut(String playerId, String toTeamId, {required int fee, bool withOption = false, int? optionPrice}) {
+    final user = userTeam;
+    final p = user?.findPlayer(playerId);
+    final to = teamOrNull(toTeamId);
+    if (user == null || p == null || to == null || !managesClub) {
+      return const TransferResult(false, 'Negócio indisponível.');
+    }
+    if (p.onLoan) return TransferResult(false, '${p.name} já é um jogador emprestado ao seu clube.');
+    if (!transferWindowOpen) return TransferResult(false, '$windowLabel.');
+    if (user.squad.length <= GameState.minSquadSize) {
+      return const TransferResult(false, 'Elenco no tamanho mínimo (${GameState.minSquadSize}).');
+    }
+    final offer = loanSuitors(p).where((s) => s.$1.id == toTeamId).firstOrNull;
+    final base = offer?.$2 ?? loanFee(p);
+    final option = optionPrice ?? suggestedOptionPrice(p);
+    // Pedir mais que a oferta, ou opção de compra cara, pode afastar o clube
+    double chance = 0.95 * (base / max(1, fee)).clamp(0.0, 1.0);
+    if (withOption) chance *= (suggestedOptionPrice(p) / max(1, option) * 1.1).clamp(0.1, 1.0);
+    if (_rng.nextDouble() > chance) {
+      _notify();
+      return TransferResult(false, 'O ${to.name} não aceitou as condições. Eles oferecem ${formatMoney(base)} de taxa.');
+    }
+    user.squad.remove(p);
+    user.startingIds.remove(p.id);
+    incomingOffers.removeWhere((o) => o.playerId == p.id);
+    p
+      ..listed = false
+      ..askingPrice = 0
+      ..loanFromTeamId = user.id;
+    to.squad.add(p);
+    to.balance -= fee;
+    _credit(user, fee, 'Transferências', 'Empréstimo de ${p.name} ao ${to.name}');
+    if (withOption) loanOptions[p.id] = option;
+    _addNews('🔁 ${p.name} é emprestado ao ${to.name} até o fim da temporada'
+        '${withOption ? ' (opção de compra: ${formatMoney(option)})' : ''}.');
+    _changed();
+    return TransferResult(true, '${p.name} emprestado ao ${to.name} (${formatMoney(fee)}). O salário passa a ser pago por eles.');
+  }
+
+  /// Traz de volta um jogador emprestado (só com a janela aberta).
+  TransferResult recallLoan(String playerId) {
+    final user = userTeam;
+    final entry = loanedOut.where((e) => e.$2.id == playerId).firstOrNull;
+    if (user == null || entry == null) return const TransferResult(false, 'Empréstimo não encontrado.');
+    if (!transferWindowOpen) return TransferResult(false, '$windowLabel.');
+    final full = _squadCheck(user);
+    if (full != null) return TransferResult(false, full);
+    final (t, p) = entry;
+    t.squad.remove(p);
+    t.startingIds.remove(p.id);
+    p.loanFromTeamId = null;
+    loanOptions.remove(p.id);
+    user.squad.add(p);
+    _addNews('↩️ ${user.name} encerra o empréstimo e ${p.name} volta do ${t.name}.');
+    _changed();
+    return TransferResult(true, '${p.name} voltou ao elenco.');
   }
 
   TransferResult signFreeAgent(String playerId, {required int wage, required int years}) {
@@ -236,7 +383,7 @@ extension GameMarket on GameState {
     user.startingIds.remove(p.id);
     incomingOffers.removeWhere((o) => o.playerId == p.id);
     if (p.onLoan) {
-      final owner = teams.where((t) => t.id == p.loanFromTeamId).firstOrNull;
+      final owner = teamOrNull(p.loanFromTeamId);
       p.loanFromTeamId = null;
       owner?.squad.add(p);
       _changed();
@@ -277,7 +424,7 @@ extension GameMarket on GameState {
   TransferResult acceptOffer(TransferOffer o, {int sellOnPercent = 0}) {
     final user = userTeam;
     final p = user?.findPlayer(o.playerId);
-    final buyer = teams.where((t) => t.id == o.buyerId).firstOrNull;
+    final buyer = teamOrNull(o.buyerId);
     if (user == null || p == null || buyer == null) {
       incomingOffers.remove(o);
       _notify();
@@ -319,7 +466,7 @@ extension GameMarket on GameState {
 
   /// Pede 15% a mais. O comprador aceita (e o negócio fecha) ou desiste.
   TransferResult counterOffer(TransferOffer o) {
-    final buyer = teams.where((t) => t.id == o.buyerId).firstOrNull;
+    final buyer = teamOrNull(o.buyerId);
     final amount = roundTo(o.amount * 1.15, 50000);
     incomingOffers.remove(o);
     if (buyer != null && buyer.balance >= amount && _rng.nextDouble() < 0.5) {

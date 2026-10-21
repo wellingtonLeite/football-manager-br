@@ -1,4 +1,6 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:football_manager_br/main.dart';
 import 'package:football_manager_br/game/data.dart';
@@ -6,6 +8,8 @@ import 'package:football_manager_br/game/economy.dart';
 import 'package:football_manager_br/game/engine.dart';
 import 'package:football_manager_br/game/models.dart';
 import 'package:football_manager_br/ui/audio_service.dart';
+import 'package:football_manager_br/ui/live_match_screen.dart';
+import 'package:football_manager_br/ui/prematch_screen.dart';
 
 /// Joga a data atual inteira (jogo do usuário com placar fixo) e avança.
 void playDay(GameState g, {int hg = 1, int ag = 1}) {
@@ -54,7 +58,7 @@ void main() {
     final ids = <String>{};
     for (final t in [...teams, ...foreign]) {
       expect(ids.add(t.id), isTrue, reason: 'clube repetido ${t.id}');
-      expect(t.squad.length, greaterThanOrEqualTo(t.isForeign ? 18 : 22), reason: t.name);
+      expect(t.squad.length, greaterThanOrEqualTo(GameState.minSquadSize), reason: t.name);
     }
     final playerIds = <String>{for (final t in [...teams, ...foreign]) for (final p in t.squad) p.id};
     expect(playerIds.length, [...teams, ...foreign].fold<int>(0, (s, t) => s + t.squad.length));
@@ -384,6 +388,106 @@ void main() {
     expect(await copy.importSave(g.exportSave()), isTrue);
     expect(copy.humans.length, 2);
     expect(copy.humans[1].club.trainingFocus, 'defesa');
+  });
+
+  test('1ª temporada: só os classificados reais para a Libertadores e Sul-Americana 2026', () {
+    final g = GameState()..startGame('bah');
+    Set<String> brs(String comp) => {
+          for (final m in g.matches.where((m) => m.comp == comp))
+            for (final id in [m.homeId, m.awayId])
+              if (!g.teamById(id).isForeign) id,
+        };
+    expect(brs('LIB'), {'fla', 'pal', 'cru', 'mir', 'flu', 'cor'});
+    expect(brs('SUL'), {'cam', 'sao', 'san', 'bot', 'gre', 'vas', 'rbb'});
+  });
+
+  test('emprestar jogador do elenco: sai, o outro clube paga o salário e ele volta no fim', () {
+    final g = GameState()..startGame('fla');
+    final user = g.userTeam!;
+    final p = user.squad.firstWhere((x) => !user.startingIds.contains(x.id));
+    final payroll = user.payroll;
+    final suitors = g.loanSuitors(p);
+    expect(suitors, isNotEmpty);
+    TransferResult? r;
+    for (int i = 0; i < 30 && !(r?.success ?? false); i++) {
+      r = g.loanOut(p.id, suitors.first.$1.id, fee: suitors.first.$2);
+    }
+    expect(r!.success, isTrue, reason: r.message);
+    expect(user.findPlayer(p.id), isNull);
+    expect(user.payroll, payroll - p.wage);
+    expect(g.loanedOut.map((e) => e.$2.id), contains(p.id));
+    expect(suitors.first.$1.findPlayer(p.id)?.loanFromTeamId, 'fla');
+    playSeason(g);
+    g.startNewSeason();
+    expect(g.teamById('fla').findPlayer(p.id)?.loanFromTeamId, isNull);
+  });
+
+  test('empréstimo com opção de compra negociada e compra definitiva', () {
+    final g = GameState()..startGame('fla');
+    g.userTeam!.balance = 500000000;
+    final seller = g.teamById('cru');
+    final p = seller.squad.firstWhere((x) => !seller.startingIds.contains(x.id));
+    final fee = g.loanFee(p) * 3;
+    final option = (g.suggestedOptionPrice(p) * 1.3).round();
+    TransferResult? r;
+    for (int i = 0; i < 40 && !(r?.success ?? false); i++) {
+      r = g.proposeLoan(p.id, fee: fee, withOption: true, optionPrice: option);
+    }
+    expect(r!.success, isTrue, reason: r.message);
+    expect(g.loanOptions[p.id], option);
+    expect(g.exerciseLoanOption(p.id).success, isTrue);
+    expect(g.userTeam!.findPlayer(p.id)?.onLoan, isFalse);
+  });
+
+  test('mercado: busca por nome (sem acento), idade e ordenação', () {
+    final g = GameState()..startGame('fla');
+    final found = g.marketPlayers(region: 'ALL', query: 'mbappe');
+    expect(found.map((e) => e.$2.name), contains('Kylian Mbappé'));
+    final young = g.marketPlayers(region: 'BRA', maxAge: 21, sort: 'age');
+    expect(young, isNotEmpty);
+    expect(young.every((e) => e.$2.age <= 21), isTrue);
+    expect(young.first.$2.age <= young.last.$2.age, isTrue);
+  });
+
+  test('coletiva: comenta o resultado do último jogo de verdade', () {
+    final g = GameState()..startGame('fla');
+    for (int i = 0; i < 40; i++) {
+      final m = g.userMatchCurrent;
+      if (m != null) {
+        final home = m.homeId == g.userTeamId;
+        playDay(g, hg: home ? 3 : 0, ag: home ? 0 : 3); // sempre vitória por 3 x 0
+        final q = g.generatePressConference().first.question;
+        expect(q, contains('Vitória por 3 x 0'), reason: 'dia ${g.currentDay}: $q');
+      } else {
+        playDay(g);
+      }
+    }
+  });
+
+  testWidgets('jogo ao vivo contra clube estrangeiro (Libertadores)', (tester) async {
+    final g = GameState()..startGame('fla');
+    while (g.userMatchCurrent?.comp != 'LIB') {
+      playDay(g);
+    }
+    g.simulateOtherMatches();
+    g.ensureUserLineup();
+    Widget app(Widget home) => MultiProvider(
+          providers: [
+            ChangeNotifierProvider(create: (_) => AudioService()),
+            ChangeNotifierProvider<GameState>.value(value: g),
+          ],
+          child: MaterialApp(home: home),
+        );
+    await tester.pumpWidget(app(const PreMatchScreen()));
+    await tester.pump();
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(app(const LiveMatchScreen()));
+    for (int i = 0; i < 60; i++) {
+      await tester.pump(const Duration(seconds: 1));
+    }
+    expect(tester.takeException(), isNull);
+    expect(find.textContaining('INTERVALO'), findsWidgets);
+    await tester.pumpWidget(const SizedBox());
   });
 
   testWidgets('nova carreira: modo, clube e telas principais', (tester) async {

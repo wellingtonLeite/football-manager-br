@@ -152,6 +152,9 @@ class GameState extends ChangeNotifier {
 
   Team teamById(String id) => _index[id] ?? allTeams.firstWhere((t) => t.id == id);
 
+  /// Brasileiro ou estrangeiro; null se o clube não existir.
+  Team? teamOrNull(String? id) => id == null ? null : _index[id] ?? allTeams.where((t) => t.id == id).firstOrNull;
+
   Team? get userTeam => userTeamId == null ? null : teamById(userTeamId!);
 
   int get userDivision => userTeam?.division ?? 1;
@@ -688,15 +691,27 @@ class GameState extends ChangeNotifier {
       }
     }
 
-    // Empréstimos voltam ao clube de origem
-    for (final t in teams) {
+    // Empréstimos voltam ao clube de origem (ou a IA exerce a opção de compra)
+    for (final t in allTeams) {
       for (final p in t.squad.where((p) => p.onLoan).toList()) {
         final owner = _index[p.loanFromTeamId];
         if (owner == null) continue;
+        final option = loanOptions.remove(p.id);
+        if (option != null && !isHumanTeam(t.id) && isHumanTeam(owner.id) && t.balance >= option &&
+            p.overall >= t.averageOverall - 2 && _rng.nextDouble() < 0.6) {
+          t.balance -= option;
+          _credit(owner, option, 'Transferências', 'Opção de compra de ${p.name} (${t.name})');
+          p
+            ..loanFromTeamId = null
+            ..contractYears = max(p.contractYears, 3);
+          _addNews('✍️ O ${t.name} exerce a opção e compra ${p.name} por ${formatMoney(option)}.');
+          continue;
+        }
         t.squad.remove(p);
+        t.startingIds.remove(p.id);
         p.loanFromTeamId = null;
         owner.squad.add(p);
-        if (t.id == userTeamId) {
+        if (isHumanTeam(t.id) || isHumanTeam(owner.id)) {
           _addNews('↩️ ${p.name} voltou ao ${owner.name} ao fim do empréstimo.');
         }
       }
@@ -1083,19 +1098,30 @@ class GameState extends ChangeNotifier {
     final t = userTeam;
     if (t == null || !controlsTeam) return const [];
     final pos = userPosition;
-    final lastMatch = matches.where((m) => m.isPlayed && m.involves(t.id)).lastOrNull;
+    // A lista de jogos não é cronológica (copas são criadas depois): vale o de data mais recente
+    Match? lastMatch;
+    for (final m in matches) {
+      if (m.isPlayed && m.involves(t.id) && (lastMatch == null || m.day >= lastMatch.day)) lastMatch = m;
+    }
     if (lastMatch == null) return const [];
     final userIsHome = lastMatch.homeId == t.id;
     final gf = userIsHome ? lastMatch.homeGoals! : lastMatch.awayGoals!;
     final ga = userIsHome ? lastMatch.awayGoals! : lastMatch.homeGoals!;
-    final won = gf > ga;
-    final drew = gf == ga;
+    final opp = teamById(userIsHome ? lastMatch.awayId : lastMatch.homeId).name;
+    // Decisão por pênaltis conta como vitória ou derrota
+    final pf = userIsHome ? lastMatch.homePens : lastMatch.awayPens;
+    final pa = userIsHome ? lastMatch.awayPens : lastMatch.homePens;
+    final won = gf > ga || (gf == ga && pf != null && pa != null && pf > pa);
+    final lost = gf < ga || (gf == ga && pf != null && pa != null && pf < pa);
+    final drew = !won && !lost;
 
     final questions = <PressConference>[];
 
     if (won) {
       questions.add(PressConference(
-        question: 'Vitória importante! Como avalia a atuação da equipe?',
+        question: gf == ga
+            ? 'Classificação nos pênaltis contra o $opp! Como avalia a equipe?'
+            : 'Vitória por $gf x $ga sobre o $opp! Como avalia a atuação da equipe?',
         answers: [
           'Fomos superiores do início ao fim, merecemos a vitória.',
           'Foi uma partida difícil, mas o time mostrou caráter.',
@@ -1108,8 +1134,8 @@ class GameState extends ChangeNotifier {
     } else if (drew) {
       questions.add(PressConference(
         question: userIsHome
-            ? 'Empate em casa. O que faltou para vencer?'
-            : 'Empate fora de casa. O resultado foi bom?',
+            ? 'Empate em $gf x $ga com o $opp em casa. O que faltou para vencer?'
+            : 'Empate em $gf x $ga com o $opp fora de casa. O resultado foi bom?',
         answers: [
           'Faltou eficiência no ataque, criamos chances mas não convertemos.',
           'O adversário jogou muito bem, parabéns a eles.',
@@ -1121,7 +1147,9 @@ class GameState extends ChangeNotifier {
       ));
     } else {
       questions.add(PressConference(
-        question: 'Derrota preocupante. Qual sua explicação?',
+        question: gf == ga
+            ? 'Eliminação nos pênaltis para o $opp. Qual sua explicação?'
+            : 'Derrota por $gf x $ga para o $opp. Qual sua explicação?',
         answers: [
           'Assumo a responsabilidade. Precisamos trabalhar mais.',
           'A arbitragem prejudicou o time.',
