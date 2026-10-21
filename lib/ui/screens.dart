@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../game/engine.dart';
 import '../game/models.dart';
 import '../game/data.dart';
+import 'shield.dart';
 
 const Color kGreen = Color(0xFF1B5E20);
 
@@ -20,34 +21,25 @@ class TeamSelectScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Escolha seu Clube'),
-        backgroundColor: kGreen,
-      ),
+      appBar: AppBar(title: const Text('Escolha seu Clube'), backgroundColor: kGreen),
       body: ListView.separated(
         itemCount: kClubs.length,
         separatorBuilder: (_, __) => const Divider(height: 1),
         itemBuilder: (context, i) {
           final c = kClubs[i];
           return ListTile(
-            leading: CircleAvatar(
-              backgroundColor: const Color(0xFF2E7D32),
-              child: Text(
-                c.shortName,
-                style: const TextStyle(
-                  fontSize: 11,
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
+            leading: ClubShield(shortName: c.shortName, size: 32),
             title: Text(
               c.name,
               style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
             ),
             subtitle: Text(
-              '${c.state} • ${c.stadium} • ${'★' * c.stars}',
-              style: const TextStyle(color: Colors.white70),
+              '${c.state} • ${c.stadium} • Téc: ${c.coach}',
+              style: const TextStyle(color: Colors.white70, fontSize: 12),
+            ),
+            trailing: Text(
+              '★' * c.stars,
+              style: const TextStyle(color: Colors.amber),
             ),
             onTap: () =>
                 context.read<GameState>().startGame(c.shortName.toLowerCase()),
@@ -76,6 +68,8 @@ class HomeScreen extends StatelessWidget {
               padding: const EdgeInsets.all(16),
               child: Column(
                 children: [
+                  ClubShield(shortName: team.shortName, size: 64),
+                  const SizedBox(height: 8),
                   Text(
                     '★' * team.stars,
                     style: const TextStyle(color: Colors.amber, fontSize: 20),
@@ -155,11 +149,7 @@ class RoundScreen extends StatelessWidget {
       body: Column(
         children: [
           Expanded(
-            child: ListView(
-              children: [
-                for (final m in matches) _matchTile(game, m),
-              ],
-            ),
+            child: ListView(children: [for (final m in matches) _matchTile(game, m)]),
           ),
           SafeArea(
             child: Padding(
@@ -198,12 +188,16 @@ class RoundScreen extends StatelessWidget {
         color: isUser ? const Color(0xFF1B5E20) : const Color(0xFF263238),
         borderRadius: BorderRadius.circular(8),
       ),
-      child: ListTile(
-        title: Row(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        child: Row(
           children: [
+            ClubShield(shortName: home.shortName, size: 20),
+            const SizedBox(width: 6),
             Expanded(
-              child: Text(home.name, textAlign: TextAlign.right,
-                  style: const TextStyle(color: Colors.white, fontSize: 14)),
+              child: Text(home.name,
+                  textAlign: TextAlign.right,
+                  style: const TextStyle(color: Colors.white, fontSize: 13)),
             ),
             Container(
               margin: const EdgeInsets.symmetric(horizontal: 8),
@@ -214,16 +208,15 @@ class RoundScreen extends StatelessWidget {
               ),
               child: Text(
                 m.isPlayed ? '${m.homeGoals} x ${m.awayGoals}' : 'vs',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                ),
+                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
               ),
             ),
             Expanded(
               child: Text(away.name,
-                  style: const TextStyle(color: Colors.white, fontSize: 14)),
+                  style: const TextStyle(color: Colors.white, fontSize: 13)),
             ),
+            const SizedBox(width: 6),
+            ClubShield(shortName: away.shortName, size: 20),
           ],
         ),
       ),
@@ -289,7 +282,7 @@ class TableScreen extends StatelessWidget {
     final game = context.watch<GameState>();
     final table = game.standings;
     return Scaffold(
-      appBar: AppBar(title: const Text('Série A - Classificação'), backgroundColor: kGreen),
+      appBar: AppBar(title: const Text('Série A 2026'), backgroundColor: kGreen),
       body: ListView.builder(
         itemCount: table.length + 2,
         itemBuilder: (context, index) {
@@ -333,12 +326,20 @@ class TableScreen extends StatelessWidget {
                 child: Text('${i + 1}',
                     style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
               ),
-              title: Text(
-                isUser ? '${t.name} (VOCÊ)' : t.name,
-                style: TextStyle(
-                  color: Colors.white,
-                  fontWeight: isUser ? FontWeight.bold : FontWeight.normal,
-                ),
+              title: Row(
+                children: [
+                  ClubShield(shortName: t.shortName, size: 18),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      isUser ? '${t.name} (VOCÊ)' : t.name,
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: isUser ? FontWeight.bold : FontWeight.normal,
+                      ),
+                    ),
+                  ),
+                ],
               ),
               trailing: Row(
                 mainAxisSize: MainAxisSize.min,
