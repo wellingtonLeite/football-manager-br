@@ -91,6 +91,11 @@ class HomeScreen extends StatelessWidget {
                     '${team.played} jogos • Estádio: ${team.stadium}',
                     style: const TextStyle(color: Colors.white70),
                   ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Técnico: ${team.coach}',
+                    style: TextStyle(color: Colors.amber.shade300, fontSize: 13),
+                  ),
                 ],
               ),
             ),
