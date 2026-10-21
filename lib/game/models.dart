@@ -1,8 +1,38 @@
 import 'dart:math';
 
 enum Tactic { retranca, neutro, ofensivo, tudoOuNada }
+
+/// Esquema tático: quantos jogadores por posição e o efeito em ataque/defesa.
+enum Formation {
+  f442('4-4-2', {'GOL': 1, 'ZAG': 2, 'LAT': 2, 'VOL': 2, 'MEI': 2, 'ATA': 2}, 0.0, 0.0),
+  f433('4-3-3', {'GOL': 1, 'ZAG': 2, 'LAT': 2, 'VOL': 1, 'MEI': 2, 'ATA': 3}, 0.12, 0.08),
+  f451('4-5-1', {'GOL': 1, 'ZAG': 2, 'LAT': 2, 'VOL': 3, 'MEI': 2, 'ATA': 1}, -0.10, -0.10),
+  f352('3-5-2', {'GOL': 1, 'ZAG': 3, 'LAT': 2, 'VOL': 1, 'MEI': 3, 'ATA': 2}, 0.06, 0.0),
+  f343('3-4-3', {'GOL': 1, 'ZAG': 3, 'LAT': 2, 'VOL': 1, 'MEI': 1, 'ATA': 3}, 0.18, 0.15),
+  f532('5-3-2', {'GOL': 1, 'ZAG': 3, 'LAT': 2, 'VOL': 2, 'MEI': 1, 'ATA': 2}, -0.12, -0.15);
+
+  const Formation(this.label, this.quota, this.attack, this.concede);
+  final String label;
+  final Map<String, int> quota;
+
+  /// Gols a mais que o time tende a fazer / a sofrer (somado ao λ de Poisson).
+  final double attack;
+  final double concede;
+}
 enum FanMood { apoio, neutro, protesto }
 enum PressMood { positivo, neutro, critico }
+
+/// Modo de carreira escolhido no início (Fase 10).
+enum GameMode {
+  tecnico('👔', 'Técnico', 'Escale, defina a tática e jogue as partidas ao vivo.'),
+  presidente('🏛️', 'Presidente', 'Cuide do dinheiro, contrate técnicos e vença a eleição.'),
+  jogador('⚽', 'Jogador', 'Crie um atleta e leve-o dos 17 aos 40 anos.');
+
+  const GameMode(this.emoji, this.label, this.description);
+  final String emoji;
+  final String label;
+  final String description;
+}
 
 /// Meta definida pela diretoria para a temporada (Fase 10A).
 enum BoardGoal {
@@ -15,6 +45,22 @@ enum BoardGoal {
   final String label;
   final int maxPosition;
   final double expectedPpg;
+
+  /// Texto da meta conforme a divisão (na Série B, G4 significa acesso).
+  String labelFor(int division) {
+    if (division <= 1) return label;
+    final serie = 'Série ${'ABCD'[division - 1]}';
+    switch (this) {
+      case BoardGoal.titulo:
+        return 'Ser campeão da $serie';
+      case BoardGoal.g4:
+        return 'Conquistar o acesso (G4 da $serie)';
+      case BoardGoal.top8:
+        return 'Terminar entre os 8 primeiros da $serie';
+      case BoardGoal.naoCair:
+        return division == 4 ? 'Terminar fora do Z4 da Série D' : 'Não ser rebaixado da $serie';
+    }
+  }
 }
 
 class MatchEvent {
@@ -35,8 +81,8 @@ class MatchEvent {
 
 class Player {
   final String id;
-  final String name;
-  final String position;
+  String name;
+  String position;
   int age;
   int overall;
   int xp;
@@ -54,6 +100,14 @@ class Player {
   // Departamento médico
   int injuredRounds;
 
+  // Disciplina e origem
+  String nat;
+  int yellowCards;
+  int suspended;
+
+  /// Teto de evolução (só o olheiro revela). 0 = não definido.
+  int potential;
+
   Player({
     required this.id,
     required this.name,
@@ -70,6 +124,10 @@ class Player {
     this.askingPrice = 0,
     this.loanFromTeamId,
     this.injuredRounds = 0,
+    this.nat = 'BRA',
+    this.yellowCards = 0,
+    this.suspended = 0,
+    this.potential = 0,
   })  : wage = wage ?? fairWage(overall, age),
         releaseClause = releaseClause ?? valueOf(overall, age) * 2;
 
@@ -77,14 +135,14 @@ class Player {
 
   /// Salário mensal "de mercado" (R$) para um atleta com esse overall/idade.
   static int fairWage(int overall, int age) {
-    double w = 80000 * exp(0.1466 * (overall - 65));
+    double w = 60000 * exp(0.18 * (overall - 65));
     if (age <= 20) {
       w *= 0.5;
     } else if (age <= 23) {
       w *= 0.75;
     }
     final rounded = (w / 1000).round() * 1000;
-    return max(15000, rounded);
+    return max(5000, rounded);
   }
 
   /// Valor de mercado (R$) para um atleta com esse overall/idade.
@@ -113,6 +171,9 @@ class Player {
 
   bool get injured => injuredRounds > 0;
 
+  /// Lesionado ou suspenso: não pode ser escalado.
+  bool get unavailable => injuredRounds > 0 || suspended > 0;
+
   bool get onLoan => loanFromTeamId != null;
 
   double get conditionedOverall {
@@ -128,7 +189,7 @@ class Player {
     while (xp >= xpToNext) {
       xp -= xpToNext;
       int gain = 0;
-      if (overall >= 94) {
+      if (overall >= 94 || (potential > 0 && overall >= potential)) {
         gain = 0;
       } else if (age <= 21) {
         gain = rng.nextDouble() < 0.8 ? 2 : 1;
@@ -147,49 +208,58 @@ class Player {
     return msgs;
   }
 
+  /// Formato compacto (chaves curtas, valores padrão omitidos): o save fica bem menor.
   Map<String, dynamic> toJson() => {
-    'id': id,
-    'name': name,
-    'position': position,
-    'age': age,
-    'overall': overall,
-    'xp': xp,
-    'energy': energy,
-    'morale': morale,
-    'wage': wage,
-    'contractYears': contractYears,
-    'releaseClause': releaseClause,
-    'listed': listed,
-    'askingPrice': askingPrice,
-    'loanFromTeamId': loanFromTeamId,
-    'injuredRounds': injuredRounds,
+    'i': id,
+    'n': name,
+    'p': position,
+    'a': age,
+    'o': overall,
+    if (xp != 0) 'x': xp,
+    if (energy != 100) 'e': energy,
+    if (morale != 70) 'm': morale,
+    'w': wage,
+    'c': contractYears,
+    'rc': releaseClause,
+    if (listed) 'ls': true,
+    if (askingPrice != 0) 'ap': askingPrice,
+    if (loanFromTeamId != null) 'lo': loanFromTeamId,
+    if (injuredRounds != 0) 'ij': injuredRounds,
+    if (nat != 'BRA') 'nat': nat,
+    if (yellowCards > 0) 'yc': yellowCards,
+    if (suspended > 0) 'susp': suspended,
+    if (potential > 0) 'pot': potential,
   };
 
   factory Player.fromJson(Map<String, dynamic> json) => Player(
-    id: json['id'],
-    name: json['name'],
-    position: json['position'],
-    age: json['age'],
-    overall: json['overall'],
-    xp: json['xp'] ?? 0,
-    energy: json['energy'] ?? 100,
-    morale: json['morale'] ?? 70,
-    wage: json['wage'],
-    contractYears: json['contractYears'] ?? 2,
-    releaseClause: json['releaseClause'],
-    listed: json['listed'] ?? false,
-    askingPrice: json['askingPrice'] ?? 0,
-    loanFromTeamId: json['loanFromTeamId'],
-    injuredRounds: json['injuredRounds'] ?? 0,
+    id: json['i'] ?? json['id'],
+    name: json['n'] ?? json['name'],
+    position: json['p'] ?? json['position'],
+    age: json['a'] ?? json['age'],
+    overall: json['o'] ?? json['overall'],
+    xp: json['x'] ?? json['xp'] ?? 0,
+    energy: json['e'] ?? json['energy'] ?? 100,
+    morale: json['m'] ?? json['morale'] ?? 70,
+    wage: json['w'] ?? json['wage'],
+    contractYears: json['c'] ?? json['contractYears'] ?? 2,
+    releaseClause: json['rc'] ?? json['releaseClause'],
+    listed: json['ls'] ?? json['listed'] ?? false,
+    askingPrice: json['ap'] ?? json['askingPrice'] ?? 0,
+    loanFromTeamId: json['lo'] ?? json['loanFromTeamId'],
+    injuredRounds: json['ij'] ?? json['injuredRounds'] ?? 0,
+    nat: json['nat'] ?? 'BRA',
+    yellowCards: json['yc'] ?? 0,
+    suspended: json['susp'] ?? 0,
+    potential: json['pot'] ?? 0,
   );
 }
 
 class Team {
   final String id;
-  final String name;
+  String name;
   final String shortName;
   final String state;
-  final String stadium;
+  String stadium;
   String coach;
   final int stars;
   final int baseOverall;
@@ -217,6 +287,18 @@ class Team {
   int stadiumLevel = 0;
   int medicalLevel = 0;
 
+  // Divisões, copas e técnicos
+  /// 1 a 4 = Séries A a D; 0 = clube estrangeiro (só copas continentais).
+  int division;
+  final String country;
+  int coachRating;
+  int coachWage = 0;
+  final List<String> trophies;
+
+  /// Liga estrangeira ('ENG', 'ESP'...); vazio para brasileiros e clubes só de copa.
+  String league;
+  Formation formation = Formation.f442;
+
   Team({
     required this.id,
     required this.name,
@@ -228,7 +310,27 @@ class Team {
     required this.baseOverall,
     required this.squad,
     this.capacity = 30000,
-  });
+    this.division = 1,
+    this.country = 'BRA',
+    this.coachRating = 3,
+    List<String>? trophies,
+    this.league = '',
+  }) : trophies = trophies ?? [];
+
+  bool get isForeign => division == 0;
+
+  /// Chave da liga para tabelas: 'BRA1'..'BRA4' ou o código da liga estrangeira.
+  String get leagueKey => division > 0 ? 'BRA$division' : league;
+
+  void resetLeagueStats() {
+    points = 0;
+    wins = 0;
+    draws = 0;
+    losses = 0;
+    goalsFor = 0;
+    goalsAgainst = 0;
+    played = 0;
+  }
 
   int get goalDifference => goalsFor - goalsAgainst;
 
@@ -298,6 +400,13 @@ class Team {
     'ctLevel': ctLevel,
     'stadiumLevel': stadiumLevel,
     'medicalLevel': medicalLevel,
+    'division': division,
+    'country': country,
+    'coachRating': coachRating,
+    'coachWage': coachWage,
+    'trophies': trophies,
+    if (league.isNotEmpty) 'league': league,
+    'formation': formation.name,
   };
 
   factory Team.fromJson(Map<String, dynamic> json) {
@@ -312,7 +421,14 @@ class Team {
       baseOverall: json['baseOverall'],
       squad: (json['squad'] as List).map((p) => Player.fromJson(p as Map<String, dynamic>)).toList(),
       capacity: json['capacity'] ?? 30000,
+      division: json['division'] ?? 1,
+      country: json['country'] ?? 'BRA',
+      coachRating: json['coachRating'] ?? 3,
+      trophies: List<String>.from(json['trophies'] ?? []),
+      league: json['league'] ?? '',
     );
+    t.formation = Formation.values.byName(json['formation'] ?? 'f442');
+    t.coachWage = json['coachWage'] ?? 0;
     t.startingIds = List<String>.from(json['startingIds'] ?? []);
     t.points = json['points'] ?? 0;
     t.wins = json['wins'] ?? 0;
@@ -334,30 +450,87 @@ class Team {
 }
 
 class Match {
+  /// Rodada da liga, jogo da fase de grupos ou posição no chaveamento (mata-mata).
   final int round;
   final String homeId;
   final String awayId;
+
+  /// 'A'..'D' (Séries), 'CDB', 'LIB', 'SUL' ou `EST:<chave>` (estaduais/regionais).
+  final String comp;
+
+  /// Data do calendário da temporada em que o jogo acontece.
+  final int day;
+
+  /// 'L' liga, 'G' grupos, 'R32', 'R16', 'QF', 'SF', 'F'.
+  final String stage;
+  final String group;
+
+  /// 0 jogo único, 1 ida, 2 volta.
+  final int leg;
+
   int? homeGoals;
   int? awayGoals;
+  int? homePens;
+  int? awayPens;
 
-  Match({required this.round, required this.homeId, required this.awayId});
+  Match({
+    required this.round,
+    required this.homeId,
+    required this.awayId,
+    this.comp = 'A',
+    this.day = 0,
+    this.stage = 'L',
+    this.group = '',
+    this.leg = 0,
+  });
 
   bool get isPlayed => homeGoals != null && awayGoals != null;
 
+  bool get isLeague => stage == 'L';
+
+  bool get isKnockout => stage != 'L' && stage != 'G';
+
+  bool involves(String teamId) => homeId == teamId || awayId == teamId;
+
   Map<String, dynamic> toJson() => {
-    'round': round,
-    'homeId': homeId,
-    'awayId': awayId,
-    'homeGoals': homeGoals,
-    'awayGoals': awayGoals,
+    'r': round,
+    'h': homeId,
+    'a': awayId,
+    'c': comp,
+    'd': day,
+    if (stage != 'L') 's': stage,
+    if (group.isNotEmpty) 'g': group,
+    if (leg != 0) 'l': leg,
+    if (homeGoals != null) 'hg': homeGoals,
+    if (awayGoals != null) 'ag': awayGoals,
+    if (homePens != null) 'hp': homePens,
+    if (awayPens != null) 'apn': awayPens,
   };
 
   factory Match.fromJson(Map<String, dynamic> json) => Match(
-    round: json['round'],
-    homeId: json['homeId'],
-    awayId: json['awayId'],
-  )..homeGoals = json['homeGoals']
-   ..awayGoals = json['awayGoals'];
+    round: json['r'] ?? json['round'],
+    homeId: json['h'] ?? json['homeId'],
+    awayId: json['a'] ?? json['awayId'],
+    comp: json['c'] ?? json['comp'] ?? 'A',
+    day: json['d'] ?? json['day'] ?? json['round'],
+    stage: json['s'] ?? json['stage'] ?? 'L',
+    group: json['g'] ?? json['group'] ?? '',
+    leg: json['l'] ?? json['leg'] ?? 0,
+  )..homeGoals = json['hg'] ?? json['homeGoals']
+   ..awayGoals = json['ag'] ?? json['awayGoals']
+   ..homePens = json['hp'] ?? json['homePens']
+   ..awayPens = json['apn'] ?? json['awayPens'];
+}
+
+/// Linha de uma tabela de grupo (estaduais e copas continentais).
+class StandingRow {
+  final Team team;
+  int played = 0, wins = 0, draws = 0, losses = 0, goalsFor = 0, goalsAgainst = 0;
+
+  StandingRow(this.team);
+
+  int get points => wins * 3 + draws;
+  int get goalDifference => goalsFor - goalsAgainst;
 }
 
 class PressConference {
@@ -378,6 +551,7 @@ class PressConference {
 
 /// Lançamento no extrato financeiro do clube do usuário (Fase 8).
 class FinanceEntry {
+  final String teamId;
   final int season;
   final int round;
   final String category;
@@ -385,6 +559,7 @@ class FinanceEntry {
   final int amount;
 
   FinanceEntry({
+    this.teamId = '',
     required this.season,
     required this.round,
     required this.category,
@@ -393,6 +568,7 @@ class FinanceEntry {
   });
 
   Map<String, dynamic> toJson() => {
+    if (teamId.isNotEmpty) 'teamId': teamId,
     'season': season,
     'round': round,
     'category': category,
@@ -401,6 +577,7 @@ class FinanceEntry {
   };
 
   factory FinanceEntry.fromJson(Map<String, dynamic> json) => FinanceEntry(
+    teamId: json['teamId'] ?? '',
     season: json['season'],
     round: json['round'],
     category: json['category'],
@@ -478,6 +655,9 @@ class SeasonRecord {
   final String? goal;
   final bool? goalMet;
 
+  /// Campeões de cada competição da temporada (nome da competição → clube).
+  final Map<String, String> titles;
+
   SeasonRecord({
     required this.season,
     required this.champion,
@@ -488,7 +668,8 @@ class SeasonRecord {
     this.userPoints,
     this.goal,
     this.goalMet,
-  });
+    Map<String, String>? titles,
+  }) : titles = titles ?? {};
 
   Map<String, dynamic> toJson() => {
     'season': season,
@@ -500,6 +681,7 @@ class SeasonRecord {
     'userPoints': userPoints,
     'goal': goal,
     'goalMet': goalMet,
+    'titles': titles,
   };
 
   factory SeasonRecord.fromJson(Map<String, dynamic> json) => SeasonRecord(
@@ -512,6 +694,7 @@ class SeasonRecord {
     userPoints: json['userPoints'],
     goal: json['goal'],
     goalMet: json['goalMet'],
+    titles: Map<String, String>.from(json['titles'] ?? {}),
   );
 }
 
@@ -540,6 +723,7 @@ class CoachCareer {
   bool employed;
   final List<JobOffer> offers;
   final List<String> log;
+  final List<String> trophies = [];
 
   CoachCareer({
     required this.name,
@@ -566,6 +750,7 @@ class CoachCareer {
     'employed': employed,
     'offers': offers.map((o) => o.toJson()).toList(),
     'log': log,
+    'trophies': trophies,
   };
 
   factory CoachCareer.fromJson(Map<String, dynamic> json) => CoachCareer(
@@ -581,5 +766,155 @@ class CoachCareer {
         .map((o) => JobOffer.fromJson(o as Map<String, dynamic>))
         .toList(),
     log: List<String>.from(json['log'] ?? []),
+  )..trophies.addAll(List<String>.from(json['trophies'] ?? []));
+}
+
+/// Números do atleta do Modo Jogador em uma temporada (Fase 10C).
+class PlayerSeasonStats {
+  final int season;
+  String team;
+  int games = 0;
+  int goals = 0;
+  int assists = 0;
+  double ratingSum = 0;
+
+  PlayerSeasonStats({required this.season, required this.team});
+
+  double get avgRating => games == 0 ? 0 : ratingSum / games;
+
+  Map<String, dynamic> toJson() => {
+    'season': season,
+    'team': team,
+    'games': games,
+    'goals': goals,
+    'assists': assists,
+    'ratingSum': ratingSum,
+  };
+
+  factory PlayerSeasonStats.fromJson(Map<String, dynamic> json) =>
+      PlayerSeasonStats(season: json['season'], team: json['team'])
+        ..games = json['games'] ?? 0
+        ..goals = json['goals'] ?? 0
+        ..assists = json['assists'] ?? 0
+        ..ratingSum = (json['ratingSum'] ?? 0).toDouble();
+}
+
+/// Carreira do atleta criado pelo usuário (Fase 10C).
+class PlayerCareer {
+  final String playerId;
+  final String nationality;
+  int caps;
+  bool retired;
+  int raiseSeason;
+  bool transferRequested;
+  double lastRating;
+  final List<PlayerSeasonStats> seasons;
+
+  PlayerCareer({
+    required this.playerId,
+    required this.nationality,
+    this.caps = 0,
+    this.retired = false,
+    this.raiseSeason = 0,
+    this.transferRequested = false,
+    this.lastRating = 0,
+    List<PlayerSeasonStats>? seasons,
+  }) : seasons = seasons ?? [];
+
+  int get totalGames => seasons.fold(0, (s, x) => s + x.games);
+  int get totalGoals => seasons.fold(0, (s, x) => s + x.goals);
+  int get totalAssists => seasons.fold(0, (s, x) => s + x.assists);
+
+  Map<String, dynamic> toJson() => {
+    'playerId': playerId,
+    'nationality': nationality,
+    'caps': caps,
+    'retired': retired,
+    'raiseSeason': raiseSeason,
+    'transferRequested': transferRequested,
+    'lastRating': lastRating,
+    'seasons': seasons.map((s) => s.toJson()).toList(),
+  };
+
+  factory PlayerCareer.fromJson(Map<String, dynamic> json) => PlayerCareer(
+    playerId: json['playerId'],
+    nationality: json['nationality'] ?? 'Brasil',
+    caps: json['caps'] ?? 0,
+    retired: json['retired'] ?? false,
+    raiseSeason: json['raiseSeason'] ?? 0,
+    transferRequested: json['transferRequested'] ?? false,
+    lastRating: (json['lastRating'] ?? 0).toDouble(),
+    seasons: (json['seasons'] as List? ?? [])
+        .map((s) => PlayerSeasonStats.fromJson(s as Map<String, dynamic>))
+        .toList(),
   );
+}
+
+/// Crise ou decisão estratégica que o presidente precisa responder (Fase 10B).
+class CrisisEvent {
+  final String kind;
+  final String title;
+  final String text;
+  final List<String> options;
+
+  CrisisEvent({required this.kind, required this.title, required this.text, required this.options});
+
+  Map<String, dynamic> toJson() => {'kind': kind, 'title': title, 'text': text, 'options': options};
+
+  factory CrisisEvent.fromJson(Map<String, dynamic> json) => CrisisEvent(
+    kind: json['kind'],
+    title: json['title'],
+    text: json['text'],
+    options: List<String>.from(json['options']),
+  );
+}
+
+/// Mandato do presidente (Fase 10B).
+class PresidentState {
+  int popularity;
+  int mandateStart;
+  int mandateLength;
+  final List<int> patrimonyHistory;
+  final List<CrisisEvent> pending;
+  int elections;
+
+  /// Empréstimo a pagar no fim da temporada e temporada da promessa de reforço.
+  int debt = 0;
+  int promiseSeason = 0;
+
+  PresidentState({
+    this.popularity = 60,
+    required this.mandateStart,
+    this.mandateLength = 3,
+    this.elections = 0,
+    List<int>? patrimonyHistory,
+    List<CrisisEvent>? pending,
+  })  : patrimonyHistory = patrimonyHistory ?? [],
+        pending = pending ?? [];
+
+  int get mandateEnd => mandateStart + mandateLength - 1;
+
+  Map<String, dynamic> toJson() => {
+    'popularity': popularity,
+    'mandateStart': mandateStart,
+    'mandateLength': mandateLength,
+    'elections': elections,
+    'patrimonyHistory': patrimonyHistory,
+    'pending': pending.map((e) => e.toJson()).toList(),
+    'debt': debt,
+    'promiseSeason': promiseSeason,
+  };
+
+  factory PresidentState.fromJson(Map<String, dynamic> json) => PresidentState(
+    popularity: json['popularity'] ?? 60,
+    mandateStart: json['mandateStart'],
+    mandateLength: json['mandateLength'] ?? 3,
+    elections: json['elections'] ?? 0,
+    patrimonyHistory: List<int>.from(json['patrimonyHistory'] ?? []),
+    pending: (json['pending'] as List? ?? [])
+        .map((e) => CrisisEvent.fromJson(e as Map<String, dynamic>))
+        .toList(),
+  )
+    ..debt = json['debt'] ?? 0
+    ..promiseSeason = json['promiseSeason'] ?? 0;
 }

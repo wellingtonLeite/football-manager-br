@@ -5,6 +5,7 @@ import '../game/models.dart';
 import '../game/economy.dart';
 import 'shield.dart';
 import 'widgets.dart';
+import 'extra_screens.dart';
 
 /// Fase 10A — reputação, metas da diretoria, convites e histórico.
 class CareerScreen extends StatelessWidget {
@@ -48,7 +49,7 @@ class CareerScreen extends StatelessWidget {
                   ),
                   const SizedBox(height: 12),
                   meterBar('Reputação', c.reputation),
-                  infoRow('Títulos brasileiros', '${c.titles} 🏆'),
+                  infoRow('Títulos (todas as competições)', '${c.trophies.length} 🏆'),
                   infoRow('Salário', c.employed ? '${formatMoney(c.salary)}/mês' : '—'),
                   infoRow('Ganhos na carreira', formatMoney(c.earnings)),
                   const SizedBox(height: 6),
@@ -60,12 +61,76 @@ class CareerScreen extends StatelessWidget {
               ),
             ),
           ),
-          if (t != null) ...[
+          if (t != null && game.mode == GameMode.tecnico) ...[
             sectionTitle('META DA DIRETORIA'),
             _goalCard(context, game, t),
           ],
+          if (game.nationalOffer)
+            Card(
+              color: Colors.green.shade900,
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('🇧🇷 Convite da CBF', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+                    const Text('Assumir a Seleção Brasileira? Você deixa o clube atual.',
+                        style: TextStyle(color: Colors.white70)),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        TextButton(onPressed: game.declineNationalTeam, child: const Text('Recusar')),
+                        ElevatedButton(onPressed: game.acceptNationalTeam, child: const Text('Aceitar')),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          if (game.isNationalCoach)
+            Card(
+              color: Colors.green.shade800,
+              child: ListTile(
+                leading: const Text('🇧🇷', style: TextStyle(fontSize: 28)),
+                title: const Text('Seleção Brasileira', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                subtitle: Text('${game.national!.wins}V ${game.national!.draws}E ${game.national!.losses}D',
+                    style: const TextStyle(color: Colors.white70)),
+                trailing: const Icon(Icons.chevron_right, color: Colors.white),
+                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const NationalTeamScreen())),
+              ),
+            ),
+          if (t != null && game.clubRecords[t.id] != null) ...[
+            sectionTitle('RECORDES NO ${t.name.toUpperCase()}'),
+            Builder(builder: (context) {
+              final r = game.clubRecords[t.id]!;
+              final scorers = r.scorers.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
+              final apps = r.apps.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
+              return Card(
+                color: kCard,
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
+                    children: [
+                      if (r.biggestWin.isNotEmpty) infoRow('Maior vitória', r.biggestWin),
+                      if (r.bestCrowd > 0) infoRow('Maior público', '${r.bestCrowd}'),
+                      if (scorers.isNotEmpty) infoRow('Artilheiro', '${scorers.first.key} (${scorers.first.value})'),
+                      if (apps.isNotEmpty) infoRow('Mais jogos', '${apps.first.key} (${apps.first.value})'),
+                    ],
+                  ),
+                ),
+              );
+            }),
+          ],
           sectionTitle('CONVITES DE CLUBES'),
           const JobOffersList(),
+          if (c.trophies.isNotEmpty) ...[
+            sectionTitle('TÍTULOS CONQUISTADOS'),
+            for (final tr in c.trophies.reversed)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                child: Text('🏆 $tr', style: const TextStyle(color: Colors.amber)),
+              ),
+          ],
           if (game.history.isNotEmpty) ...[
             sectionTitle('PALMARÈS — TEMPORADAS ANTERIORES'),
             for (final h in game.history.reversed) _seasonCard(h),
@@ -99,7 +164,7 @@ class CareerScreen extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(c.goal.label, style: const TextStyle(color: Colors.amber, fontSize: 16, fontWeight: FontWeight.bold)),
+            Text(c.goal.labelFor(t.division), style: const TextStyle(color: Colors.amber, fontSize: 16, fontWeight: FontWeight.bold)),
             const SizedBox(height: 8),
             infoRow('Posição atual', '$posº', valueColor: onTrack ? Colors.greenAccent : Colors.redAccent),
             infoRow('Pontos por jogo', '${ppg.toStringAsFixed(2)} (esperado ${c.goal.expectedPpg.toStringAsFixed(2)})',
@@ -143,6 +208,8 @@ class CareerScreen extends StatelessWidget {
             Text('${h.season} — 🏆 ${h.champion}', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
             Text('Vice: ${h.runnerUp}', style: const TextStyle(color: Colors.white70, fontSize: 12)),
             Text('Z4: ${h.relegated.join(', ')}', style: const TextStyle(color: Colors.white54, fontSize: 12)),
+            for (final e in h.titles.entries.where((e) => e.key != 'Série A'))
+              Text('${e.key}: ${e.value}', style: const TextStyle(color: Colors.white60, fontSize: 12)),
             if (h.userTeam != null)
               Text(
                 'Você: ${h.userTeam} • ${h.userPosition}º • ${h.userPoints} pts • meta ${h.goalMet == true ? '✅' : '❌'} (${h.goal})',
@@ -206,8 +273,9 @@ class JobOffersList extends StatelessWidget {
                       ],
                     ),
                     const SizedBox(height: 6),
-                    Text('Meta: ${o.goal.label}', style: const TextStyle(color: Colors.amber)),
-                    Text('Salário: ${formatMoney(o.salary)}/mês', style: const TextStyle(color: Colors.white70)),
+                    if (game.mode == GameMode.tecnico) Text('Meta: ${o.goal.labelFor(team.division)}', style: const TextStyle(color: Colors.amber)),
+                    Text(compName(divisionComp(team.division)), style: const TextStyle(color: Colors.white60)),
+                    if (game.mode == GameMode.tecnico) Text('Salário: ${formatMoney(o.salary)}/mês', style: const TextStyle(color: Colors.white70)),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.end,
                       children: [
@@ -222,8 +290,8 @@ class JobOffersList extends StatelessWidget {
                               context,
                               'Assumir o ${team.name}?',
                               game.userTeam == null
-                                  ? 'Meta: ${o.goal.label}.'
-                                  : 'Você deixará o ${game.userTeam!.name}. Meta: ${o.goal.label}.',
+                                  ? 'Meta: ${o.goal.labelFor(team.division)}.'
+                                  : 'Você deixará o ${game.userTeam!.name}. Meta: ${o.goal.labelFor(team.division)}.',
                             );
                             if (ok) game.acceptJobOffer(o);
                           },

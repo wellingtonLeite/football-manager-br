@@ -1,6 +1,10 @@
 import 'dart:math';
 import 'models.dart';
 import 'economy.dart';
+import 'data_world.dart';
+import 'data_stars.dart';
+
+export 'data_world.dart' show WorldClub, kWorldClubs, kLeagueNames, kLeagueCountry;
 
 class ClubInfo {
   final String name;
@@ -10,42 +14,213 @@ class ClubInfo {
   final String coach;
   final int stars;
   final int capacity;
+  final int division;
+  final int coachRating;
+  final String country;
   const ClubInfo(this.name, this.shortName, this.state, this.stadium,
-      this.coach, this.stars, this.capacity);
+      this.coach, this.stars, this.capacity,
+      {this.division = 1, this.coachRating = 3, this.country = 'BRA'});
 }
 
 // Série A 2026 — técnicos atualizados em 20/10/2026.
 const List<ClubInfo> kClubs = [
-  ClubInfo('Flamengo', 'FLA', 'RJ', 'Maracanã', 'Leonardo Jardim', 5, 78000),
-  ClubInfo('Palmeiras', 'PAL', 'SP', 'Nubank Parque', 'Abel Ferreira', 5, 43000),
-  ClubInfo('Cruzeiro', 'CRU', 'MG', 'Mineirão', 'Artur Jorge', 4, 62000),
-  ClubInfo('Botafogo', 'BOT', 'RJ', 'Nilton Santos', 'Tite', 4, 44000),
-  ClubInfo('Bahia', 'BAH', 'BA', 'Arena Fonte Nova', 'Rogério Ceni', 4, 48000),
+  ClubInfo('Flamengo', 'FLA', 'RJ', 'Maracanã', 'Leonardo Jardim', 5, 78000, coachRating: 5),
+  ClubInfo('Palmeiras', 'PAL', 'SP', 'Nubank Parque', 'Abel Ferreira', 5, 43000, coachRating: 5),
+  ClubInfo('Cruzeiro', 'CRU', 'MG', 'Mineirão', 'Artur Jorge', 4, 62000, coachRating: 4),
+  ClubInfo('Botafogo', 'BOT', 'RJ', 'Nilton Santos', 'Tite', 4, 44000, coachRating: 4),
+  ClubInfo('Bahia', 'BAH', 'BA', 'Arena Fonte Nova', 'Rogério Ceni', 4, 48000, coachRating: 4),
   ClubInfo('Mirassol', 'MIR', 'SP', 'Maião', 'Rafael Guanaes', 3, 15000),
-  ClubInfo('São Paulo', 'SAO', 'SP', 'MorumBIS', 'Dorival Júnior', 4, 66000),
-  ClubInfo('Fluminense', 'FLU', 'RJ', 'Maracanã', 'Marcão (interino)', 4, 78000),
+  ClubInfo('São Paulo', 'SAO', 'SP', 'MorumBIS', 'Dorival Júnior', 4, 66000, coachRating: 4),
+  ClubInfo('Fluminense', 'FLU', 'RJ', 'Maracanã', 'Marcão (interino)', 4, 78000, coachRating: 2),
   ClubInfo('Corinthians', 'COR', 'SP', 'Neo Química Arena', 'Clarence Seedorf', 4, 47000),
-  ClubInfo('Grêmio', 'GRE', 'RS', 'Arena do Grêmio', 'Renato Gaúcho', 4, 55000),
-  ClubInfo('Atlético Mineiro', 'CAM', 'MG', 'Arena MRV', 'Eduardo Domínguez', 4, 46000),
+  ClubInfo('Grêmio', 'GRE', 'RS', 'Arena do Grêmio', 'Renato Gaúcho', 4, 55000, coachRating: 4),
+  ClubInfo('Atlético Mineiro', 'CAM', 'MG', 'Arena MRV', 'Eduardo Domínguez', 4, 46000, coachRating: 4),
   ClubInfo('Red Bull Bragantino', 'RBB', 'SP', 'Cícero de Souza Marques', 'Vagner Mancini', 3, 17000),
   ClubInfo('Vasco da Gama', 'VAS', 'RJ', 'São Januário', 'Pedro Emanuel', 3, 21000),
   ClubInfo('Internacional', 'INT', 'RS', 'Beira-Rio', 'Eduardo Baptista', 4, 50000),
-  ClubInfo('Santos', 'SAN', 'SP', 'Vila Belmiro', 'Cuca', 4, 16000),
+  ClubInfo('Santos', 'SAN', 'SP', 'Vila Belmiro', 'Cuca', 4, 16000, coachRating: 4),
   ClubInfo('Vitória', 'VIT', 'BA', 'Barradão', 'Jair Ventura', 3, 30000),
   ClubInfo('Coritiba', 'CFC', 'PR', 'Couto Pereira', 'Fernando Seabra', 3, 40000),
   ClubInfo('Athletico Paranaense', 'CAP', 'PR', 'Arena da Baixada', 'Odair Hellmann', 4, 42000),
-  ClubInfo('Chapecoense', 'CHA', 'SC', 'Arena Condá', 'Rafael Lacerda', 3, 20000),
+  ClubInfo('Chapecoense', 'CHA', 'SC', 'Arena Condá', 'Rafael Lacerda', 3, 20000, coachRating: 2),
   ClubInfo('Remo', 'REM', 'PA', 'Mangueirão', 'Thiago Carpini', 3, 50000),
 ];
 
-/// Técnicos sem clube, usados para substituir técnicos demitidos pela IA
-/// ou quando o usuário deixa um clube.
-const List<String> kCoachPool = [
-  'Filipe Luís', 'Fernando Diniz', 'Luís Castro', 'Paulo Pezzolano',
-  'Luis Zubeldía', 'Hernán Crespo', 'Roger Machado', 'Martín Anselmi',
-  'Franclim Carvalho', 'Léo Condé', 'Juan Pablo Vojvoda', 'Jorge Sampaoli',
-  'Gilmar Dal Pozzo', 'Fábio Matias', 'Juan Carlos Osorio', 'Mano Menezes',
+// Série B 2026 — técnicos atualizados em 20/10/2026 (ordem = força inicial).
+const List<ClubInfo> kClubsB = [
+  ClubInfo('Fortaleza', 'FOR', 'CE', 'Castelão', 'Paulo Autuori', 3, 57876, division: 2, coachRating: 4),
+  ClubInfo('Sport', 'SPT', 'PE', 'Ilha do Retiro', 'Mariano Soso', 3, 32983, division: 2),
+  ClubInfo('Ceará', 'CEA', 'CE', 'Castelão', 'Daniel Paulista', 3, 57876, division: 2),
+  ClubInfo('Goiás', 'GOI', 'GO', 'Estádio da Serrinha', 'Mozart', 3, 14450, division: 2),
+  ClubInfo('Criciúma', 'CRI', 'SC', 'Heriberto Hülse', 'Umberto Louzer', 2, 19225, division: 2),
+  ClubInfo('Juventude', 'JUV', 'RS', 'Alfredo Jaconi', 'Maurício Barbieri', 2, 19924, division: 2),
+  ClubInfo('Cuiabá', 'CUI', 'MT', 'Arena Pantanal', 'Eduardo Barros', 2, 44000, division: 2, coachRating: 2),
+  ClubInfo('Atlético Goianiense', 'ACG', 'GO', 'Antônio Accioly', 'Roger Silva', 2, 12500, division: 2, coachRating: 2),
+  ClubInfo('América Mineiro', 'AME', 'MG', 'Arena Independência', 'Moacir Júnior', 2, 23018, division: 2),
+  ClubInfo('Novorizontino', 'NOV', 'SP', 'Jorge Ismael de Biasi', 'Enderson Moreira', 2, 16000, division: 2),
+  ClubInfo('Ponte Preta', 'PON', 'SP', 'Moisés Lucarelli', 'Gilson Kleina', 2, 19728, division: 2),
+  ClubInfo('Operário Ferroviário', 'OPE', 'PR', 'Germano Krüger', 'Alberto Valentim', 2, 10632, division: 2),
+  ClubInfo('Vila Nova', 'VIL', 'GO', 'Onésio Brasileiro Alvarenga', 'Guto Ferreira', 2, 6500, division: 2),
+  ClubInfo('CRB', 'CRB', 'AL', 'Rei Pelé', 'Fábio Matias', 2, 17126, division: 2),
+  ClubInfo('Avaí', 'AVA', 'SC', 'Ressacada', 'Marquinhos (interino)', 2, 17826, division: 2, coachRating: 2),
+  ClubInfo('Botafogo-SP', 'BSP', 'SP', 'Santa Cruz', 'Cláudio Tencati', 2, 29292, division: 2),
+  ClubInfo('Náutico', 'NAU', 'PE', 'Aflitos', 'Bruno Pivetti', 2, 22856, division: 2, coachRating: 2),
+  ClubInfo('Londrina', 'LON', 'PR', 'Estádio do Café', 'Daniel Azambuja (interino)', 2, 31000, division: 2, coachRating: 2),
+  ClubInfo('São Bernardo', 'SBE', 'SP', '1º de Maio', 'Vinícius Bergantin', 2, 15159, division: 2, coachRating: 2),
+  ClubInfo('Athletic', 'ATH', 'MG', 'Arena Sicredi', 'Alex', 2, 6000, division: 2, coachRating: 2),
 ];
+
+// Série C 2026 — técnicos atualizados em 20/10/2026.
+const List<ClubInfo> kClubsC = [
+  ClubInfo('Paysandu', 'PAY', 'PA', 'Curuzu', 'Mazola Júnior', 2, 16200, division: 3, coachRating: 2),
+  ClubInfo('Santa Cruz', 'STC', 'PE', 'Arruda', 'Cristian de Souza', 2, 60044, division: 3, coachRating: 2),
+  ClubInfo('Guarani', 'GUA', 'SP', 'Brinco de Ouro', 'Interino', 2, 29130, division: 3, coachRating: 2),
+  ClubInfo('Figueirense', 'FIG', 'SC', 'Orlando Scarpelli', 'Raul Cabral', 2, 19584, division: 3, coachRating: 2),
+  ClubInfo('Amazonas', 'AMA', 'AM', 'Arena da Amazônia', 'Rodrigo Santana', 1, 44000, division: 3, coachRating: 2),
+  ClubInfo('Volta Redonda', 'VRE', 'RJ', 'Raulino de Oliveira', 'Neto Colucci (interino)', 1, 20255, division: 3, coachRating: 2),
+  ClubInfo('Ferroviária', 'FER', 'SP', 'Fonte Luminosa', 'Rogério Corrêa', 1, 20000, division: 3, coachRating: 2),
+  ClubInfo('Caxias', 'CAX', 'RS', 'Centenário', 'William de Mattia', 1, 22132, division: 3, coachRating: 2),
+  ClubInfo('Ypiranga', 'YPI', 'RS', 'Colosso da Lagoa', 'Gabardo Júnior', 1, 22000, division: 3, coachRating: 2),
+  ClubInfo('Botafogo-PB', 'BPB', 'PB', 'Almeidão', 'Victor Ferraz (interino)', 1, 25770, division: 3, coachRating: 2),
+  ClubInfo('Brusque', 'BRU', 'SC', 'Augusto Bauer', 'Higo Magalhães', 1, 5000, division: 3, coachRating: 2),
+  ClubInfo('Confiança', 'CON', 'SE', 'Batistão', 'Ricardo Resende', 1, 15575, division: 3, coachRating: 2),
+  ClubInfo('Floresta', 'FLO', 'CE', 'Presidente Vargas', 'Leston Júnior', 1, 20262, division: 3, coachRating: 2),
+  ClubInfo('Inter de Limeira', 'ILI', 'SP', 'Major José Levy Sobrinho', 'Matheus Costa', 1, 23475, division: 3, coachRating: 2),
+  ClubInfo('Itabaiana', 'ITA', 'SE', 'Etelvino Mendonça', 'Marcelo Chamusca', 1, 12000, division: 3, coachRating: 2),
+  ClubInfo('Ituano', 'ITU', 'SP', 'Novelli Júnior', 'Interino', 1, 18560, division: 3, coachRating: 1),
+  ClubInfo('Maranhão', 'MAR', 'MA', 'Castelão', 'Jerson Testoni', 1, 40149, division: 3, coachRating: 2),
+  ClubInfo('Maringá', 'MGA', 'PR', 'Willie Davids', 'Ivan Campanari', 1, 16226, division: 3, coachRating: 2),
+  ClubInfo('Anápolis', 'ANA', 'GO', 'Jonas Duarte', 'Luan Carlos', 1, 14000, division: 3, coachRating: 2),
+  ClubInfo('Barra', 'BAR', 'SC', 'Arena Barra FC', 'Evaristo Piza', 1, 5500, division: 3, coachRating: 2),
+];
+
+// Série D 2026 — 20 clubes tradicionais entre os 96 participantes.
+// Técnicos fictícios.
+const List<ClubInfo> kClubsD = [
+  ClubInfo('Portuguesa', 'POR', 'SP', 'Canindé', 'Celso Arruda', 1, 21000, division: 4, coachRating: 2),
+  ClubInfo('Joinville', 'JEC', 'SC', 'Arena Joinville', 'Valdir Kunz', 1, 22400, division: 4, coachRating: 2),
+  ClubInfo('Sampaio Corrêa', 'SAM', 'MA', 'Castelão', 'Raimundo Sá', 1, 40149, division: 4, coachRating: 2),
+  ClubInfo('Brasil de Pelotas', 'BPE', 'RS', 'Bento Freitas', 'Darci Pereira', 1, 18000, division: 4, coachRating: 2),
+  ClubInfo('América-RN', 'ARN', 'RN', 'Arena das Dunas', 'Josias Medeiros', 1, 31375, division: 4, coachRating: 2),
+  ClubInfo('XV de Piracicaba', 'XVP', 'SP', 'Barão de Serra Negra', 'Osmar Tieppo', 0, 18000, division: 4, coachRating: 1),
+  ClubInfo('Noroeste', 'NOR', 'SP', 'Alfredo de Castilho', 'Wagner Lenz', 0, 15000, division: 4, coachRating: 1),
+  ClubInfo('Água Santa', 'AGS', 'SP', 'Distrital do Inamar', 'Rubens Paiva', 0, 10000, division: 4, coachRating: 1),
+  ClubInfo('São José-RS', 'SJO', 'RS', "Passo D'Areia", 'Ivo Bortoli', 0, 16000, division: 4, coachRating: 1),
+  ClubInfo('Madureira', 'MAD', 'RJ', 'Conselheiro Galvão', 'Gilmar Toledo', 0, 5000, division: 4, coachRating: 1),
+  ClubInfo('America-RJ', 'AMR', 'RJ', 'Giulite Coutinho', 'Paulo Seixas', 0, 13000, division: 4, coachRating: 1),
+  ClubInfo('Nova Iguaçu', 'NIG', 'RJ', 'Laranjão', 'Ricardo Leite', 0, 9000, division: 4, coachRating: 1),
+  ClubInfo('Moto Club', 'MOT', 'MA', 'Nhozinho Santos', 'Edvaldo Melo', 0, 7000, division: 4, coachRating: 1),
+  ClubInfo('Treze', 'TRE', 'PB', 'Amigão', 'Genival Lima', 0, 19000, division: 4, coachRating: 1),
+  ClubInfo('ASA', 'ASA', 'AL', 'Coaracy da Mata Fonseca', 'Lourival Brito', 0, 15000, division: 4, coachRating: 1),
+  ClubInfo('Ferroviário', 'FRR', 'CE', 'Presidente Vargas', 'Assis Moreno', 0, 20262, division: 4, coachRating: 1),
+  ClubInfo('Brasiliense', 'BRA', 'DF', 'Boca do Jacaré', 'Haroldo Mendes', 0, 27000, division: 4, coachRating: 1),
+  ClubInfo('Aparecidense', 'APA', 'GO', 'Annibal Batista de Toledo', 'Wellington Paz', 0, 6000, division: 4, coachRating: 1),
+  ClubInfo('Uberlândia', 'UBE', 'MG', 'Parque do Sabiá', 'Saulo Rezende', 0, 53000, division: 4, coachRating: 1),
+  ClubInfo('Juazeirense', 'JUA', 'BA', 'Adauto Moraes', 'Nivaldo Rocha', 0, 7000, division: 4, coachRating: 1),
+];
+
+// Estrangeiros da Libertadores 2026 (fase de grupos real). Técnicos fictícios.
+const List<ClubInfo> kForeignLib = [
+  ClubInfo('Estudiantes', 'EST', 'ARG', 'UNO', 'Martín Ibarra', 4, 30000, division: 0, coachRating: 4, country: 'ARG'),
+  ClubInfo('Cusco', 'CUS', 'PER', 'Inca Garcilaso', 'Jorge Quispe', 2, 40000, division: 0, coachRating: 2, country: 'PER'),
+  ClubInfo('Independiente Medellín', 'DIM', 'COL', 'Atanasio Girardot', 'Andrés Restrepo', 3, 40000, division: 0, country: 'COL'),
+  ClubInfo('Universitario', 'UNI', 'PER', 'Monumental U', 'Raúl Cárdenas', 3, 80000, division: 0, country: 'PER'),
+  ClubInfo('Nacional', 'NAC', 'URU', 'Gran Parque Central', 'Diego Ferreira', 4, 34000, division: 0, coachRating: 4, country: 'URU'),
+  ClubInfo('Deportes Tolima', 'TOL', 'COL', 'Manuel Murillo Toro', 'Camilo Ospina', 3, 28000, division: 0, country: 'COL'),
+  ClubInfo('Coquimbo Unido', 'COQ', 'CHI', 'Francisco Sánchez Rumoroso', 'Pablo Rojas', 2, 18000, division: 0, coachRating: 2, country: 'CHI'),
+  ClubInfo('Bolívar', 'BOL', 'BOL', 'Hernando Siles', 'Luis Mendoza', 3, 42000, division: 0, country: 'BOL'),
+  ClubInfo('Deportivo La Guaira', 'LGU', 'VEN', 'Olímpico de la UCV', 'Héctor Vargas', 2, 23000, division: 0, coachRating: 2, country: 'VEN'),
+  ClubInfo('Independiente Rivadavia', 'IRI', 'ARG', 'Bautista Gargantini', 'Sergio Molina', 3, 24000, division: 0, country: 'ARG'),
+  ClubInfo('Boca Juniors', 'BOC', 'ARG', 'La Bombonera', 'Fernando Aguirre', 4, 54000, division: 0, coachRating: 4, country: 'ARG'),
+  ClubInfo('Barcelona', 'BSC', 'ECU', 'Monumental Banco Pichincha', 'Esteban Paredes', 3, 57000, division: 0, country: 'ECU'),
+  ClubInfo('Universidad Católica', 'UCA', 'CHI', 'Claro Arena', 'Tomás Fuentes', 3, 20000, division: 0, country: 'CHI'),
+  ClubInfo('Peñarol', 'PEN', 'URU', 'Campeón del Siglo', 'Gonzalo Pereyra', 4, 40000, division: 0, coachRating: 4, country: 'URU'),
+  ClubInfo('Santa Fe', 'SFE', 'COL', 'El Campín', 'Julián Herrera', 3, 36000, division: 0, country: 'COL'),
+  ClubInfo('Platense', 'PLA', 'ARG', 'Ciudad de Vicente López', 'Ramiro Duarte', 3, 20000, division: 0, country: 'ARG'),
+  ClubInfo('Cerro Porteño', 'CCP', 'PAR', 'La Nueva Olla', 'Hugo Benítez', 3, 45000, division: 0, country: 'PAR'),
+  ClubInfo('Junior', 'JUN', 'COL', 'Metropolitano', 'Carlos Barrios', 3, 46000, division: 0, country: 'COL'),
+  ClubInfo('Sporting Cristal', 'SCR', 'PER', 'Alberto Gallardo', 'Renzo Salas', 3, 18000, division: 0, country: 'PER'),
+  ClubInfo('LDU Quito', 'LDU', 'ECU', 'Rodrigo Paz Delgado', 'Andrés Caicedo', 4, 41000, division: 0, coachRating: 4, country: 'ECU'),
+  ClubInfo('Lanús', 'LAN', 'ARG', 'La Fortaleza', 'Nicolás Sosa', 4, 46000, division: 0, coachRating: 4, country: 'ARG'),
+  ClubInfo('Always Ready', 'ALW', 'BOL', 'Municipal de El Alto', 'Óscar Quiroga', 2, 25000, division: 0, coachRating: 2, country: 'BOL'),
+  ClubInfo('Libertad', 'LBT', 'PAR', 'La Huerta', 'Marcos Giménez', 3, 16000, division: 0, country: 'PAR'),
+  ClubInfo('Independiente del Valle', 'IDV', 'ECU', 'Banco Guayaquil', 'Diego Montalvo', 4, 12000, division: 0, coachRating: 4, country: 'ECU'),
+  ClubInfo('Rosario Central', 'RCE', 'ARG', 'Gigante de Arroyito', 'Pablo Aguilar', 4, 41000, division: 0, country: 'ARG'),
+  ClubInfo('Universidad Central', 'UCV', 'VEN', 'Olímpico de la UCV', 'Ricardo Peña', 2, 23000, division: 0, coachRating: 2, country: 'VEN'),
+];
+
+// Estrangeiros da Sul-Americana 2026 (fase de grupos real). Técnicos fictícios.
+const List<ClubInfo> kForeignSul = [
+  ClubInfo('Tigre', 'TIG', 'ARG', 'Monumental de Victoria', 'Alejandro Ruiz', 3, 26000, division: 0, country: 'ARG'),
+  ClubInfo('América de Cali', 'AMC', 'COL', 'Pascual Guerrero', 'Felipe Cuéllar', 3, 38000, division: 0, country: 'COL'),
+  ClubInfo('Alianza Atlético', 'ALI', 'PER', 'Campeones del 36', 'Víctor Llanos', 2, 8000, division: 0, coachRating: 2, country: 'PER'),
+  ClubInfo('Macará', 'MAC', 'ECU', 'Bellavista', 'Iván Castro', 2, 16000, division: 0, coachRating: 2, country: 'ECU'),
+  ClubInfo('Cienciano', 'CIE', 'PER', 'Inca Garcilaso', 'Mario Huamán', 2, 40000, division: 0, coachRating: 2, country: 'PER'),
+  ClubInfo('Juventud', 'JUD', 'URU', 'Parque Artigas', 'Sebastián Rivas', 2, 7000, division: 0, coachRating: 2, country: 'URU'),
+  ClubInfo('Academia Puerto Cabello', 'APC', 'VEN', 'La Bombonerita', 'Daniel Blanco', 2, 7500, division: 0, coachRating: 2, country: 'VEN'),
+  ClubInfo('Millonarios', 'MIL', 'COL', 'El Campín', 'Juan Arango', 3, 36000, division: 0, country: 'COL'),
+  ClubInfo("O'Higgins", 'OHI', 'CHI', 'El Teniente', 'Cristián Lagos', 2, 13000, division: 0, coachRating: 2, country: 'CHI'),
+  ClubInfo('Boston River', 'BRI', 'URU', 'Centenario', 'Matías Olivera', 2, 60000, division: 0, coachRating: 2, country: 'URU'),
+  ClubInfo('San Lorenzo', 'SLO', 'ARG', 'Nuevo Gasómetro', 'Leandro Paz', 3, 47000, division: 0, country: 'ARG'),
+  ClubInfo('Recoleta', 'REC', 'PAR', 'Defensores del Chaco', 'Félix Ayala', 2, 42000, division: 0, coachRating: 2, country: 'PAR'),
+  ClubInfo('Deportivo Cuenca', 'CUE', 'ECU', 'Alejandro Serrano Aguilar', 'Patricio León', 2, 16500, division: 0, coachRating: 2, country: 'ECU'),
+  ClubInfo('Racing', 'RAC', 'ARG', 'El Cilindro', 'Gustavo Medina', 4, 51000, division: 0, coachRating: 4, country: 'ARG'),
+  ClubInfo('Caracas', 'CAR', 'VEN', 'Olímpico de la UCV', 'José Marín', 2, 23000, division: 0, coachRating: 2, country: 'VEN'),
+  ClubInfo('Independiente Petrolero', 'IPE', 'BOL', 'Olímpico Patria', 'Álvaro Rocha', 2, 30000, division: 0, coachRating: 2, country: 'BOL'),
+  ClubInfo('Palestino', 'PST', 'CHI', 'Municipal de La Cisterna', 'Andrés Salinas', 2, 8000, division: 0, coachRating: 2, country: 'CHI'),
+  ClubInfo('Deportivo Riestra', 'RIE', 'ARG', 'Guillermo Laza', 'Facundo Ortiz', 2, 3000, division: 0, coachRating: 2, country: 'ARG'),
+  ClubInfo('Montevideo City Torque', 'MCT', 'URU', 'Centenario', 'Bruno Silva', 2, 60000, division: 0, coachRating: 2, country: 'URU'),
+  ClubInfo('Olimpia', 'OLI', 'PAR', 'Manuel Ferreira', 'Ramón Acosta', 3, 22000, division: 0, country: 'PAR'),
+  ClubInfo('Audax Italiano', 'AUD', 'CHI', 'Bicentenario La Florida', 'Marcelo Toro', 2, 12000, division: 0, coachRating: 2, country: 'CHI'),
+  ClubInfo('Barracas Central', 'BCE', 'ARG', 'Claudio Tapia', 'Hernán Vera', 2, 4500, division: 0, coachRating: 2, country: 'ARG'),
+  ClubInfo('River Plate', 'RIV', 'ARG', 'Monumental', 'Federico Lucero', 4, 85000, division: 0, coachRating: 4, country: 'ARG'),
+  ClubInfo('Carabobo', 'CBO', 'VEN', 'Misael Delgado', 'Luis Quintero', 2, 10000, division: 0, coachRating: 2, country: 'VEN'),
+  ClubInfo('Blooming', 'BLO', 'BOL', 'Tahuichi Aguilera', 'Javier Saavedra', 2, 38000, division: 0, coachRating: 2, country: 'BOL'),
+];
+
+/// Grupos reais da Libertadores e da Sul-Americana 2026 (1ª temporada).
+const Map<String, List<String>> kLibGroups2026 = {
+  'A': ['EST', 'FLA', 'CUS', 'DIM'], 'B': ['UNI', 'NAC', 'TOL', 'COQ'],
+  'C': ['BOL', 'FLU', 'LGU', 'IRI'], 'D': ['CRU', 'BOC', 'BSC', 'UCA'],
+  'E': ['COR', 'PEN', 'SFE', 'PLA'], 'F': ['PAL', 'CCP', 'JUN', 'SCR'],
+  'G': ['LDU', 'LAN', 'MIR', 'ALW'], 'H': ['LBT', 'IDV', 'RCE', 'UCV'],
+};
+const Map<String, List<String>> kSulGroups2026 = {
+  'A': ['TIG', 'AMC', 'ALI', 'MAC'], 'B': ['CAM', 'CIE', 'JUD', 'APC'],
+  'C': ['MIL', 'SAO', 'OHI', 'BRI'], 'D': ['SLO', 'SAN', 'REC', 'CUE'],
+  'E': ['RAC', 'CAR', 'IPE', 'BOT'], 'F': ['PST', 'GRE', 'RIE', 'MCT'],
+  'G': ['VAS', 'OLI', 'AUD', 'BCE'], 'H': ['RIV', 'RBB', 'CBO', 'BLO'],
+};
+
+/// Todos os clubes brasileiros (A a D).
+List<ClubInfo> get kAllBrazilianClubs => [...kClubs, ...kClubsB, ...kClubsC, ...kClubsD];
+
+/// Técnicos sem clube (nome, nota de 1 a 5), para trocas na IA e no Modo Presidente.
+const List<(String, int)> kCoachPool = [
+  ('Filipe Luís', 5), ('Fernando Diniz', 4), ('Luís Castro', 4), ('Paulo Pezzolano', 3),
+  ('Luis Zubeldía', 4), ('Hernán Crespo', 4), ('Roger Machado', 3), ('Martín Anselmi', 3),
+  ('Franclim Carvalho', 3), ('Léo Condé', 3), ('Juan Pablo Vojvoda', 4), ('Jorge Sampaoli', 4),
+  ('Gilmar Dal Pozzo', 2), ('Fábio Matias', 2), ('Juan Carlos Osorio', 3), ('Mano Menezes', 3),
+  ('Júnior Rocha', 2), ('Elio Sizenando', 2), ('Hélio dos Anjos', 2), ('Marcelo Cabo', 2),
+];
+
+/// Nomes dos estaduais e copas regionais (chave do torneio → nome).
+const Map<String, String> kRegionalNames = {
+  'SP': 'Paulistão', 'RJ': 'Carioca', 'MG': 'Mineiro', 'RS': 'Gauchão',
+  'PR': 'Paranaense', 'SC': 'Catarinense', 'GO': 'Goiano', 'CE': 'Cearense',
+  'BA': 'Baiano', 'PE': 'Pernambucano', 'R-NE': 'Copa do Nordeste', 'R-NCO': 'Copa Verde',
+  'R-SUL': 'Copa Sul', 'R-SE': 'Copa Sudeste',
+};
+
+/// Região usada para agrupar estados com poucos clubes em uma copa regional.
+const Map<String, String> kStateRegion = {
+  'BA': 'R-NE', 'PE': 'R-NE', 'AL': 'R-NE', 'SE': 'R-NE', 'PB': 'R-NE', 'RN': 'R-NE',
+  'MA': 'R-NE', 'PI': 'R-NE', 'CE': 'R-NE',
+  'PA': 'R-NCO', 'AM': 'R-NCO', 'AP': 'R-NCO', 'RR': 'R-NCO', 'RO': 'R-NCO', 'AC': 'R-NCO',
+  'TO': 'R-NCO', 'MT': 'R-NCO', 'MS': 'R-NCO', 'DF': 'R-NCO', 'GO': 'R-NCO',
+  'RS': 'R-SUL', 'PR': 'R-SUL', 'SC': 'R-SUL',
+  'SP': 'R-SE', 'RJ': 'R-SE', 'MG': 'R-SE', 'ES': 'R-SE',
+};
 
 class Star {
   final String name;
@@ -510,6 +685,31 @@ const List<String> kLastNames = [
   'Teixeira', 'Barbosa', 'Correia', 'Dias', 'Freitas', 'Moura', 'Cavalcante',
 ];
 
+const List<String> kFirstNamesEs = [
+  'Juan', 'Matías', 'Santiago', 'Facundo', 'Nicolás', 'Agustín', 'Diego',
+  'Sebastián', 'Franco', 'Lautaro', 'Joaquín', 'Martín', 'Cristian', 'Luis',
+  'Andrés', 'Kevin', 'Brian', 'Mauricio', 'Gonzalo', 'Federico',
+];
+
+const List<String> kLastNamesEs = [
+  'González', 'Rodríguez', 'Fernández', 'López', 'Martínez', 'Pérez', 'Gómez',
+  'Sánchez', 'Romero', 'Díaz', 'Torres', 'Álvarez', 'Ruiz', 'Ramírez',
+  'Flores', 'Benítez', 'Acosta', 'Medina', 'Herrera', 'Suárez', 'Castro',
+];
+
+const List<String> kFirstNamesEu = [
+  'James', 'Luca', 'Lukas', 'Thomas', 'Hugo', 'Liam', 'Noah', 'Matteo', 'Leon', 'Jonas',
+  'Oliver', 'Jack', 'Lorenzo', 'Felix', 'Théo', 'Kai', 'Marco', 'Jan', 'Adam', 'Elias',
+];
+
+const List<String> kLastNamesEu = [
+  'Smith', 'Müller', 'Rossi', 'Martin', 'Bernard', 'Schmidt', 'Bianchi', 'Walker', 'Fischer', 'Dubois',
+  'Romano', 'Taylor', 'Weber', 'Moreau', 'Ricci', 'Brown', 'Becker', 'Leroy', 'Conti', 'Wilson',
+];
+
+const List<String> kFirstNamesAr = ['Mohammed', 'Abdullah', 'Salem', 'Fahad', 'Saud', 'Nawaf', 'Yasser', 'Turki', 'Faisal', 'Hassan'];
+const List<String> kLastNamesAr = ['Al-Dawsari', 'Al-Shahrani', 'Al-Ghamdi', 'Al-Harbi', 'Al-Otaibi', 'Al-Qahtani', 'Al-Malki', 'Al-Zahrani'];
+
 const List<String> kPositions = ['GOL', 'ZAG', 'LAT', 'VOL', 'MEI', 'ATA'];
 
 /// Tamanho-alvo do elenco por posição (24 atletas).
@@ -522,19 +722,85 @@ const Map<String, int> kSquadTargets = {
   'ATA': 5,
 };
 
+/// Elenco menor para clubes estrangeiros (só jogam as copas).
+const Map<String, int> kForeignSquadTargets = {
+  'GOL': 2,
+  'ZAG': 3,
+  'LAT': 3,
+  'VOL': 3,
+  'MEI': 3,
+  'ATA': 4,
+};
+
 int baseOverallForStars(int stars) {
   switch (stars) {
     case 5:
       return 83;
     case 4:
       return 79;
-    default:
+    case 3:
       return 75;
+    case 2:
+      return 71;
+    case 1:
+      return 67;
+    default:
+      return 64;
   }
 }
 
-String randomName(Random rng) =>
-    '${kFirstNames[rng.nextInt(kFirstNames.length)]} ${kLastNames[rng.nextInt(kLastNames.length)]}';
+String randomName(Random rng, {bool spanish = false, String league = ''}) {
+  var first = spanish ? kFirstNamesEs : kFirstNames;
+  var last = spanish ? kLastNamesEs : kLastNames;
+  if (const ['ENG', 'GER', 'FRA', 'ITA'].contains(league)) {
+    first = kFirstNamesEu;
+    last = kLastNamesEu;
+  } else if (league == 'SAU') {
+    first = kFirstNamesAr;
+    last = kLastNamesAr;
+  } else if (league == 'ESP' || league == 'ARG') {
+    first = kFirstNamesEs;
+    last = kLastNamesEs;
+  }
+  return '${first[rng.nextInt(first.length)]} ${last[rng.nextInt(last.length)]}';
+}
+
+/// Teto de evolução: jovens podem crescer bastante, veteranos já chegaram ao topo.
+int rollPotential(Random rng, int overall, int age) {
+  if (age >= 29) return overall;
+  final room = (29 - age) * 2;
+  return min(94, overall + rng.nextInt(room + 1) + (age <= 20 ? 2 : 0));
+}
+
+/// Converte "POS|Nome|NAC" em jogador (overall e idade estimados pelo nível do clube,
+/// exceto craques catalogados em [kStarRatings]).
+Player playerFromEntry(Random rng, String id, String entry, int base, String clubCode) {
+  final parts = entry.split('|');
+  var pos = parts[0];
+  final name = parts.length > 1 ? parts[1] : randomName(rng);
+  final nat = parts.length > 2 && parts[2].isNotEmpty ? parts[2] : 'BRA';
+  final star = kStarRatings['$clubCode:$name'];
+  int overall;
+  int age;
+  if (star != null) {
+    overall = star.$1;
+    age = 2026 - star.$2;
+    pos = star.$3;
+  } else {
+    overall = (base - 3 + rng.nextInt(9) - 3).clamp(50, 88).toInt();
+    age = 19 + rng.nextInt(14);
+  }
+  return Player(
+    id: id,
+    name: name,
+    position: pos,
+    age: age,
+    overall: overall,
+    nat: nat,
+    contractYears: 1 + rng.nextInt(4),
+    potential: rollPotential(rng, overall, age),
+  );
+}
 
 int _idSeq = 0;
 
@@ -549,16 +815,21 @@ Player generatePlayer(
   required int base,
   int minAge = 18,
   int maxAge = 34,
+  bool spanish = false,
+  String league = '',
+  String nat = 'BRA',
 }) {
   final int age = minAge + rng.nextInt(maxAge - minAge + 1);
-  final int overall = (base + rng.nextInt(13) - 6).clamp(55, 92).toInt();
+  final int overall = (base + rng.nextInt(13) - 6).clamp(50, 92).toInt();
   return Player(
     id: id,
-    name: randomName(rng),
+    name: randomName(rng, spanish: spanish, league: league),
     position: position,
     age: age,
     overall: overall,
     contractYears: 1 + rng.nextInt(4),
+    nat: nat,
+    potential: rollPotential(rng, overall, age),
   );
 }
 
@@ -570,7 +841,7 @@ List<Player> generateFreeAgents(Random rng, int count) {
         rng,
         id: newPlayerId(rng),
         position: kPositions[rng.nextInt(kPositions.length)],
-        base: 66 + rng.nextInt(8),
+        base: 62 + rng.nextInt(12),
         maxAge: 35,
       )..contractYears = 0,
   ];
@@ -590,10 +861,12 @@ Player generateYouth(Random rng, String position, int base, int bonus) {
   return p;
 }
 
-Team _buildTeam(ClubInfo c, Random rng) {
+Team buildTeam(ClubInfo c, Random rng) {
   final int base = baseOverallForStars(c.stars);
   final List<Star> stars = kStars[c.shortName] ?? const <Star>[];
   final String tid = c.shortName.toLowerCase();
+  final bool foreign = c.division == 0;
+  final targets = foreign ? kForeignSquadTargets : kSquadTargets;
   final List<Player> squad = [];
   int n = 1;
 
@@ -605,18 +878,34 @@ Team _buildTeam(ClubInfo c, Random rng) {
       age: s.age,
       overall: s.overall,
       contractYears: 1 + rng.nextInt(4),
+      nat: kForeignNationality[s.name] ?? (foreign ? c.country : 'BRA'),
+      potential: rollPotential(rng, s.overall, s.age),
     ));
     n++;
   }
+  // Elencos reais das Séries B, C e D (Wikipédia)
+  if (stars.isEmpty) {
+    for (final e in kRealSquadsBR[c.shortName] ?? const <String>[]) {
+      squad.add(playerFromEntry(rng, '${tid}_p$n', e, base, c.shortName));
+      n++;
+    }
+  }
 
   final Map<String, int> counts = {};
-  for (final s in stars) {
-    counts[s.position] = (counts[s.position] ?? 0) + 1;
+  for (final p in squad) {
+    counts[p.position] = (counts[p.position] ?? 0) + 1;
   }
-  kSquadTargets.forEach((pos, target) {
+  targets.forEach((pos, target) {
     final int have = counts[pos] ?? 0;
     for (int i = 0; i < target - have; i++) {
-      squad.add(generatePlayer(rng, id: '${tid}_p$n', position: pos, base: base - 3));
+      squad.add(generatePlayer(
+        rng,
+        id: '${tid}_p$n',
+        position: pos,
+        base: squad.isEmpty ? base : base - 3,
+        spanish: foreign,
+        nat: foreign ? c.country : 'BRA',
+      ));
       n++;
     }
   });
@@ -632,9 +921,13 @@ Team _buildTeam(ClubInfo c, Random rng) {
     baseOverall: base,
     squad: squad,
     capacity: c.capacity,
+    division: c.division,
+    country: c.country,
+    coachRating: c.coachRating,
   );
   team.balance = initialBudget(c.stars);
   team.sponsorMonthly = baseSponsor(c.stars);
+  team.coachWage = coachSalary(c.stars, 50);
   final lvl = initialFacilityLevel(c.stars);
   team.ctLevel = lvl;
   team.stadiumLevel = 0;
@@ -642,7 +935,77 @@ Team _buildTeam(ClubInfo c, Random rng) {
   return team;
 }
 
+/// Os 80 clubes brasileiros das Séries A a D.
 List<Team> createLeague() {
   final rng = Random();
-  return [for (final c in kClubs) _buildTeam(c, rng)];
+  return [for (final c in kAllBrazilianClubs) buildTeam(c, rng)];
+}
+
+/// Orçamento inicial de um clube estrangeiro conforme o nível (overall base).
+int foreignBudget(int base, String league) {
+  if (league == 'SAU' && base >= 80) return 250000000;
+  if (base >= 85) return 400000000;
+  if (base >= 82) return 180000000;
+  if (base >= 78) return 70000000;
+  return league == 'ARG' ? 15000000 : 30000000;
+}
+
+const Map<String, String> kLeagueCountryCode = {
+  'ENG': 'ENG', 'ESP': 'ESP', 'ITA': 'ITA', 'GER': 'GER', 'FRA': 'FRA', 'POR': 'POR', 'SAU': 'KSA', 'ARG': 'ARG',
+};
+
+/// Clube de liga estrangeira com elenco real.
+Team buildWorldTeam(WorldClub w, Random rng) {
+  final tid = w.shortName.toLowerCase();
+  final squad = <Player>[];
+  int n = 1;
+  for (final e in w.squad) {
+    squad.add(playerFromEntry(rng, '${tid}_p$n', e, w.base, w.shortName));
+    n++;
+  }
+  final counts = <String, int>{};
+  for (final p in squad) {
+    counts[p.position] = (counts[p.position] ?? 0) + 1;
+  }
+  final country = kLeagueCountryCode[w.league] ?? w.league;
+  kSquadTargets.forEach((pos, target) {
+    for (int i = counts[pos] ?? 0; i < target; i++) {
+      squad.add(generatePlayer(rng, id: '${tid}_p$n', position: pos, base: w.base - 4, league: w.league, nat: country));
+      n++;
+    }
+  });
+  final rating = w.base >= 85 ? 5 : w.base >= 82 ? 4 : w.base >= 78 ? 3 : 2;
+  final team = Team(
+    id: tid,
+    name: w.name,
+    shortName: w.shortName,
+    state: country,
+    stadium: w.stadium,
+    coach: w.coach,
+    stars: w.stars,
+    baseOverall: w.base,
+    squad: squad,
+    capacity: w.capacity,
+    division: 0,
+    country: country,
+    coachRating: rating,
+    league: w.league,
+  );
+  team.balance = foreignBudget(w.base, w.league);
+  team.coachWage = coachSalary(w.stars, rating * 20);
+  team.ctLevel = w.base >= 82 ? 3 : 2;
+  team.medicalLevel = team.ctLevel;
+  return team;
+}
+
+/// Clubes estrangeiros: ligas da Europa, Arábia e Argentina + os demais das copas.
+List<Team> createForeignTeams() {
+  final rng = Random();
+  final world = [for (final w in kWorldClubs) buildWorldTeam(w, rng)];
+  final codes = {for (final w in kWorldClubs) w.shortName};
+  return [
+    ...world,
+    for (final c in [...kForeignLib, ...kForeignSul])
+      if (!codes.contains(c.shortName)) buildTeam(c, rng),
+  ];
 }

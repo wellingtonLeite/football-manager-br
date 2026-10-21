@@ -21,7 +21,8 @@ class FinancesScreen extends StatelessWidget {
       );
     }
 
-    final season = game.ledger.where((e) => e.season == game.seasonYear).toList();
+    final mine = game.ledger.where((e) => e.teamId.isEmpty || e.teamId == t.id).toList();
+    final season = mine.where((e) => e.season == game.seasonYear).toList();
     final income = season.where((e) => e.amount > 0).fold<int>(0, (s, e) => s + e.amount);
     final expense = season.where((e) => e.amount < 0).fold<int>(0, (s, e) => s - e.amount);
     final byCategory = <String, int>{};
@@ -30,11 +31,11 @@ class FinancesScreen extends StatelessWidget {
     }
     final categories = byCategory.entries.toList()..sort((a, b) => a.value.compareTo(b.value));
 
-    const months = 10;
+    const months = 12;
     final monthIn = List<int>.filled(months, 0);
     final monthOut = List<int>.filled(months, 0);
     for (final e in season) {
-      final m = min(months - 1, (e.round - 1) ~/ 4);
+      final m = min(months - 1, (e.round - 1) ~/ 6);
       if (e.amount > 0) {
         monthIn[m] += e.amount;
       } else {
@@ -74,13 +75,13 @@ class FinancesScreen extends StatelessWidget {
                     ),
                   const Divider(color: Colors.white24),
                   infoRow('Folha salarial (mês)', formatMoney(t.payroll), valueColor: Colors.redAccent),
-                  infoRow('Salário do técnico (mês)', formatMoney(game.career.salary), valueColor: Colors.redAccent),
+                  infoRow('Salário do técnico (mês)', formatMoney(game.mode == GameMode.tecnico ? game.career.salary : t.coachWage), valueColor: Colors.redAccent),
                   infoRow('Manutenção da estrutura (mês)', formatMoney(monthlyMaintenance(t)), valueColor: Colors.redAccent),
                   infoRow('Patrocínio master (mês)', formatMoney(t.sponsorMonthly), valueColor: Colors.greenAccent),
-                  infoRow('Cotas de TV (mês)', formatMoney(tvRights(t.stars)), valueColor: Colors.greenAccent),
+                  infoRow('Cotas de TV (mês)', formatMoney(tvRights(t)), valueColor: Colors.greenAccent),
                   const SizedBox(height: 4),
                   const Text(
-                    'Salários, patrocínio e TV são lançados a cada 4 rodadas (1 mês).',
+                    'Salários, patrocínio e TV são lançados a cada 6 datas (1 mês).',
                     style: TextStyle(color: Colors.white38, fontSize: 11),
                   ),
                 ],
@@ -162,12 +163,12 @@ class FinancesScreen extends StatelessWidget {
           sectionTitle('INVESTIMENTOS'),
           for (final f in Facility.values) _facilityCard(context, game, t, f),
           sectionTitle('EXTRATO'),
-          if (game.ledger.isEmpty)
+          if (mine.isEmpty)
             const Padding(
               padding: EdgeInsets.all(8),
               child: Text('Nenhum lançamento ainda. Jogue uma rodada!', style: TextStyle(color: Colors.white54)),
             ),
-          for (final e in game.ledger.reversed.take(60)) _entryTile(e),
+          for (final e in mine.reversed.take(60)) _entryTile(e),
         ],
       ),
     );

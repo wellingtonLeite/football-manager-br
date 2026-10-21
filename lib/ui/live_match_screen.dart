@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../game/engine.dart';
@@ -59,6 +60,17 @@ class _LiveMatchScreenState extends State<LiveMatchScreen> {
   final List<MatchEvent> pending = [];
   final List<String> userScorerIds = [];
   final List<String> aiScorerIds = [];
+  final List<String> yellowIds = [];
+  final List<String> redIds = [];
+
+  // Estatísticas da partida (mandante, visitante)
+  int homeShots = 0, awayShots = 0, homeOnTarget = 0, awayOnTarget = 0;
+  double homePossession = 50;
+
+  // Campinho 2D: posição da bola (0 = gol do mandante, 1 = gol do visitante)
+  double ballX = 0.5;
+  double ballY = 0.5;
+  final Random _ballRng = Random();
   List<String> growthMsgs = [];
 
   List<Player> get userOn => userIsHome ? homeOn : awayOn;
@@ -72,18 +84,22 @@ class _LiveMatchScreenState extends State<LiveMatchScreen> {
     game = context.read<GameState>();
     audio = context.read<AudioService>();
     match = game.userMatchCurrent!;
+    userTactic = game.userTactic;
     home = game.teams.firstWhere((t) => t.id == match.homeId);
     away = game.teams.firstWhere((t) => t.id == match.awayId);
     userIsHome = match.homeId == game.userTeamId;
     homeOn = List<Player>.from(home.startingPlayers);
-    homeBench = home.squad.where((p) => !homeOn.contains(p) && !p.injured).toList();
+    homeBench = home.squad.where((p) => !homeOn.contains(p) && !p.unavailable).toList();
     awayOn = List<Player>.from(away.startingPlayers);
-    awayBench = away.squad.where((p) => !awayOn.contains(p) && !p.injured).toList();
+    awayBench = away.squad.where((p) => !awayOn.contains(p) && !p.unavailable).toList();
     
     audio.playWhistle();
     audio.playCrowd();
     
-    _timer = Timer.periodic(const Duration(milliseconds: 200), (_) => _tick());
+    final hs = game.teamStrength(home, homeOn);
+    final aws = game.teamStrength(away, awayOn);
+    homePossession = (50 + (hs - aws) * 1.2 + (userIsHome ? 0 : 0)).clamp(30, 70).toDouble();
+    _timer = Timer.periodic(Duration(milliseconds: audio.matchSpeedMs), (_) => _tick());
   }
 
   @override
@@ -120,6 +136,14 @@ class _LiveMatchScreenState extends State<LiveMatchScreen> {
         nextChunk = end;
       }
       _drain(minute);
+      _aiFatigueSubs();
+      ballX = (ballX + (_ballRng.nextDouble() - 0.5) * 0.25 + (homePossession - 50) / 800).clamp(0.08, 0.92);
+      ballY = (ballY + (_ballRng.nextDouble() - 0.5) * 0.3).clamp(0.15, 0.85);
+      // Finalizações para fora (só estatística)
+      if (minute % 6 == 0) {
+        if (homeOn.isNotEmpty && minute % 12 == 0) homeShots++;
+        if (awayOn.isNotEmpty && minute % 12 == 6) awayShots++;
+      }
       if (minute >= 90) {
         _finish();
       }
@@ -151,7 +175,7 @@ class _LiveMatchScreenState extends State<LiveMatchScreen> {
     if (p == null) return;
     p.injuredRounds = game.rollInjury(team);
     p.energy = p.energy < 30 ? p.energy : 30;
-    audio.playWhistle();
+    audio.playInjury();
     if (e.teamId == game.userTeamId) {
       feed.insert(
         0,
@@ -192,6 +216,17 @@ class _LiveMatchScreenState extends State<LiveMatchScreen> {
       final e = _validate(pending.removeAt(0));
       if (e == null) continue;
       feed.insert(0, e);
+      if (e.type == 'GOAL' || e.type == 'CHANCE') {
+        ballX = e.teamId == home.id ? 0.94 : 0.06;
+        ballY = 0.4 + _ballRng.nextDouble() * 0.2;
+        if (e.teamId == home.id) {
+          homeShots++;
+          homeOnTarget++;
+        } else {
+          awayShots++;
+          awayOnTarget++;
+        }
+      }
       if (e.type == 'INJURY') {
         _injury(e);
       } else if (e.type == 'GOAL') {
@@ -208,17 +243,23 @@ class _LiveMatchScreenState extends State<LiveMatchScreen> {
             aiScorerIds.add(e.playerId!);
           }
         }
+      } else if (e.type == 'RED') {
+        _sendOff(e.playerId!, e.teamId, e.minute, direct: true);
       } else if (e.type == 'CARD') {
         audio.playCard();
+        yellowIds.add(e.playerId!);
+        if (yellowIds.where((id) => id == e.playerId).length >= 2) {
+          _sendOff(e.playerId!, e.teamId, e.minute, direct: false);
+        }
       }
     }
   }
 
   List<MatchEvent> _genChunk(int from, int to) {
-    final uS = game.userTeam!.pitchStrength(userOn);
+    final uS = game.teamStrength(game.userTeam!, userOn);
     final aiTeam =
         game.teams.firstWhere((t) => t.id == (userIsHome ? match.awayId : match.homeId));
-    final aS = aiTeam.pitchStrength(aiOn);
+    final aS = game.teamStrength(aiTeam, aiOn);
     _updateAiTactic();
     final hs = (userIsHome ? uS : aS) + game.homeAdvantage(home);
     final aws = userIsHome ? aS : uS;
@@ -244,6 +285,48 @@ class _LiveMatchScreenState extends State<LiveMatchScreen> {
     aiTactic = Tactic.neutro;
     if (minute >= 60 && diff <= -1) aiTactic = Tactic.ofensivo;
     if (minute >= 70 && diff >= 2) aiTactic = Tactic.retranca;
+  }
+
+  /// Expulsão: o jogador sai e o time fica com um a menos.
+  void _sendOff(String playerId, String teamId, int minute, {required bool direct}) {
+    final on = teamId == home.id ? homeOn : awayOn;
+    final p = on.where((x) => x.id == playerId).firstOrNull;
+    if (p == null) return;
+    on.remove(p);
+    redIds.add(playerId);
+    audio.playCard();
+    feed.insert(
+      0,
+      MatchEvent(
+        minute: minute,
+        type: 'RED',
+        teamId: teamId,
+        text: direct ? '🟥 ${p.name} está fora: o time joga com ${on.length}.'
+            : '🟨🟥 Segundo amarelo! ${p.name} é expulso e o time fica com ${on.length}.',
+      ),
+    );
+  }
+
+  /// A IA troca jogadores muito cansados entre os 60 e 75 minutos.
+  void _aiFatigueSubs() {
+    if (aiSubsUsed >= maxSubs || minute < 60 || minute > 75 || minute % 5 != 0) return;
+    final tired = aiOn.where((p) => p.energy < 45 && p.position != 'GOL').toList()
+      ..sort((a, b) => a.energy.compareTo(b.energy));
+    if (tired.isEmpty) return;
+    final out = tired.first;
+    final pool = aiBench.where((b) => !b.unavailable && b.position == out.position).toList()
+      ..sort((a, b) => b.overall.compareTo(a.overall));
+    if (pool.isEmpty) return;
+    final inn = pool.first;
+    aiOn
+      ..remove(out)
+      ..add(inn);
+    aiBench
+      ..remove(inn)
+      ..add(out);
+    aiSubsUsed++;
+    final team = userIsHome ? away : home;
+    feed.insert(0, MatchEvent(minute: minute, type: 'SUB', teamId: team.id, text: '🔄 ${team.name}: sai ${out.name} (cansado), entra ${inn.name}.'));
   }
 
   void _aiHalftime() {
@@ -280,7 +363,8 @@ class _LiveMatchScreenState extends State<LiveMatchScreen> {
   void _finish() {
     finished = true;
     _timer?.cancel();
-    audio.playWhistle();
+    audio.stopCrowd();
+    audio.playFinalWhistle();
     feed.insert(
       0,
       MatchEvent(
@@ -290,6 +374,25 @@ class _LiveMatchScreenState extends State<LiveMatchScreen> {
         text: '🏁 FIM DE JOGO: ${home.shortName} $hg x $ag ${away.shortName}',
       ),
     );
+    int? hp;
+    int? ap;
+    if (game.needsPenalties(match, hg, ag)) {
+      final (h, a) = game.shootout(home, away);
+      hp = h;
+      ap = a;
+      pens = (h, a);
+      final winner = h > a ? home : away;
+      feed.insert(
+        0,
+        MatchEvent(
+          minute: 90,
+          type: 'GOAL',
+          teamId: winner.id,
+          text: '🥅 PÊNALTIS: ${home.shortName} $h x $a ${away.shortName} — ${winner.name} se classifica!',
+        ),
+      );
+      audio.playGoal();
+    }
     if (!applied) {
       applied = true;
       growthMsgs = game.finishUserMatch(
@@ -299,9 +402,16 @@ class _LiveMatchScreenState extends State<LiveMatchScreen> {
         userScorerIds,
         aiOn,
         aiScorerIds,
+        yellowIds: yellowIds,
+        redIds: redIds,
+        homePens: hp,
+        awayPens: ap,
       );
     }
   }
+
+  /// Placar dos pênaltis, se houve disputa.
+  (int, int)? pens;
 
   void _applyTalk(String key) {
     if (talkApplied != null) return;
@@ -422,7 +532,7 @@ class _LiveMatchScreenState extends State<LiveMatchScreen> {
       canPop: finished,
       child: Scaffold(
         appBar: AppBar(
-          title: Text('Rodada ${match.round} — AO VIVO'),
+          title: Text('${matchLabel(match)} — AO VIVO', style: const TextStyle(fontSize: 15)),
           backgroundColor: _kGreen,
           actions: [
             IconButton(
@@ -446,6 +556,11 @@ class _LiveMatchScreenState extends State<LiveMatchScreen> {
         body: Column(
           children: [
             _scoreboard(),
+            SizedBox(
+              height: 86,
+              width: double.infinity,
+              child: CustomPaint(painter: _PitchPainter(ballX, ballY, homePossession)),
+            ),
             if (halftime && !finished) _halftimePanel() else _tacticBar(),
             const Divider(height: 1),
             Expanded(
@@ -522,6 +637,15 @@ class _LiveMatchScreenState extends State<LiveMatchScreen> {
                                       'Placar: ${home.shortName} $hg x $ag ${away.shortName}',
                                       style: const TextStyle(color: Colors.white),
                                     ),
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      'Posse ${homePossession.round()}% x ${100 - homePossession.round()}% • '
+                                      'Finalizações $homeShots x $awayShots • No gol $homeOnTarget x $awayOnTarget',
+                                      style: const TextStyle(color: Colors.white70, fontSize: 12),
+                                    ),
+                                    if (yellowIds.isNotEmpty || redIds.isNotEmpty)
+                                      Text('Cartões: 🟨 ${yellowIds.length} • 🟥 ${redIds.length}',
+                                          style: const TextStyle(color: Colors.white70, fontSize: 12)),
                                     const SizedBox(height: 8),
                                     if (growthMsgs.isEmpty)
                                       const Text(
@@ -614,6 +738,12 @@ class _LiveMatchScreenState extends State<LiveMatchScreen> {
                   fontWeight: FontWeight.bold,
                 ),
               ),
+              if (pens != null)
+                Text('Pênaltis: ${pens!.$1} x ${pens!.$2}',
+                    style: const TextStyle(color: Colors.amber, fontSize: 12)),
+              if (game.aggregateBefore(match) case final agg?)
+                Text('Agregado: ${hg + agg.$1} x ${ag + agg.$2}',
+                    style: const TextStyle(color: Colors.white60, fontSize: 11)),
             ],
           ),
           Expanded(
@@ -739,4 +869,44 @@ class _LiveMatchScreenState extends State<LiveMatchScreen> {
       ],
     );
   }
+}
+
+
+/// Campinho 2D com a bola e a barra de posse.
+class _PitchPainter extends CustomPainter {
+  final double ballX;
+  final double ballY;
+  final double possession;
+  _PitchPainter(this.ballX, this.ballY, this.possession);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final field = Rect.fromLTWH(8, 4, size.width - 16, size.height - 18);
+    canvas.drawRect(field, Paint()..color = const Color(0xFF2E7D32));
+    final line = Paint()
+      ..color = Colors.white70
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.2;
+    canvas.drawRect(field, line);
+    canvas.drawLine(Offset(field.center.dx, field.top), Offset(field.center.dx, field.bottom), line);
+    canvas.drawCircle(field.center, field.height * 0.22, line);
+    final boxH = field.height * 0.55;
+    final boxW = field.width * 0.09;
+    canvas.drawRect(Rect.fromLTWH(field.left, field.center.dy - boxH / 2, boxW, boxH), line);
+    canvas.drawRect(Rect.fromLTWH(field.right - boxW, field.center.dy - boxH / 2, boxW, boxH), line);
+    final ball = Offset(field.left + field.width * ballX, field.top + field.height * ballY);
+    canvas.drawCircle(ball, 5, Paint()..color = Colors.white);
+    canvas.drawCircle(ball, 5, Paint()
+      ..color = Colors.black
+      ..style = PaintingStyle.stroke);
+    // Barra de posse
+    final barY = size.height - 10;
+    final split = 8 + (size.width - 16) * possession / 100;
+    canvas.drawRect(Rect.fromLTWH(8, barY, split - 8, 6), Paint()..color = Colors.greenAccent);
+    canvas.drawRect(Rect.fromLTWH(split, barY, size.width - 8 - split, 6), Paint()..color = Colors.orangeAccent);
+  }
+
+  @override
+  bool shouldRepaint(covariant _PitchPainter old) =>
+      old.ballX != ballX || old.ballY != ballY || old.possession != possession;
 }

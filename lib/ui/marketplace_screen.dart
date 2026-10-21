@@ -45,9 +45,18 @@ class MarketplaceScreen extends StatelessWidget {
               width: double.infinity,
               color: Colors.black38,
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              child: Text(
-                'Caixa: ${formatMoney(t.balance)} • Elenco: ${t.squad.length}/${GameState.maxSquadSize} • Folha: ${formatMoney(t.payroll)}/mês',
-                style: const TextStyle(color: Colors.white70, fontSize: 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Caixa: ${formatMoney(t.balance)} • Elenco: ${t.squad.length}/${GameState.maxSquadSize} • Folha: ${formatMoney(t.payroll)}/mês',
+                    style: const TextStyle(color: Colors.white70, fontSize: 12),
+                  ),
+                  Text(
+                    '${game.transferWindowOpen ? '🟢' : '🔴'} ${game.windowLabel}',
+                    style: TextStyle(color: game.transferWindowOpen ? Colors.greenAccent : Colors.orangeAccent, fontSize: 12),
+                  ),
+                ],
               ),
             ),
             const Expanded(
@@ -75,6 +84,7 @@ class _BuyTab extends StatefulWidget {
 
 class _BuyTabState extends State<_BuyTab> {
   String? position;
+  String region = 'BRA';
   bool onlyListed = false;
   int? maxPrice;
 
@@ -89,9 +99,25 @@ class _BuyTabState extends State<_BuyTab> {
   @override
   Widget build(BuildContext context) {
     final game = context.watch<GameState>();
-    final list = game.marketPlayers(position: position, maxPrice: maxPrice, onlyListed: onlyListed);
+    final list = game.marketPlayers(position: position, maxPrice: maxPrice, onlyListed: onlyListed, region: region);
+    final regions = <String, String>{
+      'BRA': '🇧🇷 Brasil',
+      for (final e in kLeagueNames.entries) e.key: '${kLeagueCountry[e.key]} • ${e.value}',
+      'AME': '🌎 América do Sul (copas)',
+    };
     return Column(
       children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: DropdownButton<String>(
+            value: region,
+            isExpanded: true,
+            dropdownColor: kCard,
+            style: const TextStyle(color: Colors.white),
+            items: [for (final e in regions.entries) DropdownMenuItem(value: e.key, child: Text(e.value))],
+            onChanged: (v) => setState(() => region = v ?? region),
+          ),
+        ),
         SingleChildScrollView(
           scrollDirection: Axis.horizontal,
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
@@ -145,7 +171,8 @@ class _BuyTabState extends State<_BuyTab> {
                         ],
                       ),
                       subtitle: Text(
-                        '${p.position} • ${p.age} anos • ${team.shortName} • Pedem ${formatMoney(asking)}',
+                        '${p.position} • ${p.age} anos • ${team.shortName} • Pedem ${formatMoney(asking)}'
+                        '${game.isScouted(p) ? ' • pot. ${p.potential}' : ''}${p.nat != 'BRA' ? ' • ${p.nat}' : ''}',
                         style: const TextStyle(color: Colors.white60, fontSize: 11),
                       ),
                       onTap: () => showDialog(
@@ -187,6 +214,7 @@ class _OfferDialogState extends State<_OfferDialog> {
   late int wage;
   int bonus = 0;
   int years = 3;
+  bool loanOption = false;
   late int asking;
   late int demand;
 
@@ -221,6 +249,22 @@ class _OfferDialogState extends State<_OfferDialog> {
             infoRow('Multa rescisória', formatMoney(p.releaseClause)),
             infoRow('Salário atual', '${formatMoney(p.wage)}/mês'),
             infoRow('Situação', starter ? 'Titular no clube' : (p.listed ? 'Na lista de transferências' : 'Reserva')),
+            infoRow('Potencial', game.isScouted(p) ? '${p.potential}' : '? (observe o jogador)'),
+            infoRow('Nacionalidade', p.nat),
+            if (!game.isScouted(p))
+              TextButton(
+                onPressed: () => setState(() => showResult(context, game.scoutPlayer(p.id))),
+                child: const Text('🔭 Mandar observar (R\$ 50 mil)'),
+              ),
+            infoRow('Comissão do empresário (5%)', formatMoney(game.agentFee(fee))),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              value: loanOption,
+              onChanged: (v) => setState(() => loanOption = v),
+              title: const Text('Empréstimo com opção de compra', style: TextStyle(color: Colors.white70, fontSize: 13)),
+              subtitle: Text('Taxa dobrada; compra depois por ${formatMoney(roundTo(p.marketValue * 1.1, 50000))}',
+                  style: const TextStyle(color: Colors.white38, fontSize: 11)),
+            ),
             const Divider(color: Colors.white24),
             MoneySlider(
               label: 'Proposta ao clube',
@@ -262,11 +306,11 @@ class _OfferDialogState extends State<_OfferDialog> {
         TextButton(onPressed: () => Navigator.pop(context), child: const Text('Fechar')),
         TextButton(
           onPressed: () {
-            final r = game.proposeLoan(p.id);
+            final r = game.proposeLoan(p.id, withOption: loanOption);
             showResult(context, r);
             Navigator.pop(context);
           },
-          child: Text('Empréstimo (${formatMoney(game.loanFee(p))})'),
+          child: Text('Empréstimo (${formatMoney(game.loanFee(p) * (loanOption ? 2 : 1))})'),
         ),
         ElevatedButton(
           style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white),
@@ -479,7 +523,29 @@ class _MySquadTab extends StatelessWidget {
                 ),
                 ElevatedButton(
                   style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white),
-                  onPressed: () => showResult(context, game.acceptOffer(o)),
+                  onPressed: () async {
+                    final pct = await showDialog<int>(
+                      context: context,
+                      builder: (ctx) => SimpleDialog(
+                        backgroundColor: kCard,
+                        title: const Text('Cláusula de revenda?', style: TextStyle(color: Colors.white)),
+                        children: [
+                          for (final v in [0, 10, 20])
+                            SimpleDialogOption(
+                              onPressed: () => Navigator.pop(ctx, v),
+                              child: Text(
+                                v == 0
+                                    ? 'Sem cláusula: ${formatMoney(o.amount)}'
+                                    : '$v% da próxima venda: ${formatMoney((o.amount * (1 - v / 200)).round())} agora',
+                                style: const TextStyle(color: Colors.white),
+                              ),
+                            ),
+                        ],
+                      ),
+                    );
+                    if (pct == null || !context.mounted) return;
+                    showResult(context, game.acceptOffer(o, sellOnPercent: pct));
+                  },
                   child: const Text('Aceitar'),
                 ),
               ],
@@ -524,6 +590,16 @@ class _MySquadTab extends StatelessWidget {
                 onTap: () {
                   Navigator.pop(ctx);
                   showDialog(context: context, builder: (_) => _RenewDialog(player: p));
+                },
+              ),
+            if (p.onLoan && game.loanOptions.containsKey(p.id))
+              ListTile(
+                leading: const Icon(Icons.verified, color: Colors.greenAccent),
+                title: Text('Exercer opção de compra (${formatMoney(game.loanOptions[p.id]!)})',
+                    style: const TextStyle(color: Colors.white)),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  showResult(context, game.exerciseLoanOption(p.id));
                 },
               ),
             ListTile(

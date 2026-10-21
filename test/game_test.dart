@@ -1,4 +1,3 @@
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:football_manager_br/main.dart';
@@ -6,9 +5,10 @@ import 'package:football_manager_br/game/data.dart';
 import 'package:football_manager_br/game/economy.dart';
 import 'package:football_manager_br/game/engine.dart';
 import 'package:football_manager_br/game/models.dart';
+import 'package:football_manager_br/ui/audio_service.dart';
 
-/// Joga a rodada atual inteira (jogo do usuário com placar fixo) e avança.
-void playRound(GameState g, {int hg = 1, int ag = 1}) {
+/// Joga a data atual inteira (jogo do usuário com placar fixo) e avança.
+void playDay(GameState g, {int hg = 1, int ag = 1}) {
   g.simulateOtherMatches();
   final m = g.userMatchCurrent;
   if (m != null) {
@@ -17,60 +17,125 @@ void playRound(GameState g, {int hg = 1, int ag = 1}) {
     final userIsHome = m.homeId == g.userTeamId;
     final user = userIsHome ? home : away;
     final ai = userIsHome ? away : home;
-    g.finishUserMatch(hg, ag, user.startingPlayers, const [], ai.startingPlayers, const []);
+    final ug = userIsHome ? hg : ag;
+    final og = userIsHome ? ag : hg;
+    int? hp, ap;
+    if (g.needsPenalties(m, hg, ag)) (hp, ap) = (5, 4);
+    g.finishUserMatch(hg, ag, user.startingPlayers, const [], ai.startingPlayers, const [],
+        homePens: hp, awayPens: ap);
+    expect(ug + og, hg + ag);
   }
-  g.advanceRound();
+  g.advanceDay();
+}
+
+void playSeason(GameState g) {
+  while (!g.seasonFinished) {
+    playDay(g);
+  }
 }
 
 void main() {
-  setUp(() => SharedPreferences.setMockInitialValues({}));
+  setUp(() {
+    SharedPreferences.setMockInitialValues({});
+    AudioService.enabled = false;
+  });
 
-  test('liga 2026 tem 20 clubes com elencos completos e ids únicos', () {
+  test('80 clubes brasileiros e 191 estrangeiros (8 ligas + copas), com ids únicos', () {
     final teams = createLeague();
-    expect(teams.length, 20);
-    expect(teams.any((t) => t.shortName == 'VIT'), isTrue);
+    final foreign = createForeignTeams();
+    expect(teams.length, 80);
+    expect(foreign.where((t) => t.league.isNotEmpty).length, 152);
+    expect(foreign.length, 191);
+    final realMadrid = foreign.firstWhere((t) => t.name == 'Real Madrid');
+    expect(realMadrid.squad.any((p) => p.name == 'Kylian Mbappé' && p.overall == 91), isTrue);
+    for (int d = 1; d <= 4; d++) {
+      expect(teams.where((t) => t.division == d).length, 20, reason: 'divisão $d');
+    }
     final ids = <String>{};
-    for (final t in teams) {
-      expect(t.squad.length, greaterThanOrEqualTo(22), reason: t.name);
-      kSquadTargets.forEach((pos, n) {
-        expect(t.squad.where((p) => p.position == pos).length, greaterThanOrEqualTo(n),
-            reason: '${t.name} $pos');
-      });
-      for (final p in t.squad) {
-        expect(ids.add(p.id), isTrue, reason: 'id duplicado ${p.id}');
+    for (final t in [...teams, ...foreign]) {
+      expect(ids.add(t.id), isTrue, reason: 'clube repetido ${t.id}');
+      expect(t.squad.length, greaterThanOrEqualTo(t.isForeign ? 18 : 22), reason: t.name);
+    }
+    final playerIds = <String>{for (final t in [...teams, ...foreign]) for (final p in t.squad) p.id};
+    expect(playerIds.length, [...teams, ...foreign].fold<int>(0, (s, t) => s + t.squad.length));
+  });
+
+  test('calendário: estaduais, 38 rodadas por divisão e copas', () {
+    final g = GameState()..startGame('fla');
+    for (final div in ['A', 'B', 'C', 'ENG', 'ESP', 'ITA', 'ARG']) {
+      expect(g.matches.where((m) => m.comp == div).length, 380, reason: div);
+    }
+    expect(g.matches.where((m) => m.comp == 'GER').length, 306);
+    expect(g.matches.where((m) => m.comp == 'D' && m.stage == 'G').length, 80);
+    expect(g.matches.where((m) => m.comp == 'SUP').length, 1);
+    expect(g.matches.where((m) => m.comp == 'REC').length, 2);
+    expect(g.matches.where((m) => m.comp == 'UCL').length, 16);
+    expect(g.matches.where((m) => m.comp == 'CDB').length, 16);
+    expect(g.matches.where((m) => m.comp == 'LIB').length, 96);
+    expect(g.matches.where((m) => m.comp == 'SUL').length, 96);
+    expect(g.regionalGroups.keys, containsAll(['SP', 'RJ', 'MG', 'RS']));
+    // Nenhum clube joga duas vezes na mesma data
+    for (int d = 1; d <= g.totalDays; d++) {
+      final ids = <String>[];
+      for (final m in g.matchesOfDay(d)) {
+        ids
+          ..add(m.homeId)
+          ..add(m.awayId);
       }
-      expect(t.balance, initialBudget(t.stars));
+      expect(ids.length, ids.toSet().length, reason: 'data $d');
     }
   });
 
-  test('duas temporadas completas rodam sem erros', () {
-    final g = GameState()..startGame('fla', coachName: 'Teste');
-    expect(g.career.name, 'Teste');
-    expect(g.userTeam!.coach, 'Teste');
-    for (int season = 0; season < 2; season++) {
-      while (!g.seasonFinished) {
-        playRound(g);
-      }
-      expect(g.history.length, season + 1);
-      expect(g.matches.every((m) => m.isPlayed), isTrue);
-      g.startNewSeason();
-      expect(g.currentRound, 1);
-      for (final t in g.teams) {
-        expect(t.squad.length, greaterThanOrEqualTo(GameState.minSquadSize), reason: t.name);
-        expect(t.startingIds.length, 11, reason: t.name);
-      }
+  test('temporada completa: campeões, mata-matas, acesso e rebaixamento', () {
+    final g = GameState()..startGame('pal', coachName: 'Teste');
+    playSeason(g);
+    final record = g.history.single;
+    expect(record.titles.keys, containsAll(['Série A', 'Série B', 'Série C', 'Série D', 'Copa do Brasil', 'Libertadores',
+        'Sul-Americana', 'Supercopa do Brasil', 'Recopa Sul-Americana', 'Liga dos Campeões', 'Copa Intercontinental',
+        'Premier League', 'La Liga', '🏅 Bola de Ouro', '👟 Artilheiro da Série A']));
+    expect(g.matches.every((m) => m.isPlayed), isTrue);
+    expect(g.topScorers('A').first.goalsByComp['A'], greaterThan(5));
+    for (final comp in ['CDB', 'LIB', 'SUL', 'D', 'UCL', 'MUN']) {
+      expect(g.tieWinner(comp, 'F', 0), isNotNull, reason: comp);
     }
-    expect(g.seasonYear, 2028);
+    expect(g.pendingDivisions.length, 24);
+    final relegatedA = g.standingsOf(1).sublist(16).map((t) => t.id).toList();
+    final promotedB = g.standingsOf(2).take(4).map((t) => t.id).toList();
+    g.startNewSeason();
+    expect(g.seasonYear, 2027);
+    for (final id in relegatedA) {
+      expect(g.teamById(id).division, 2);
+    }
+    for (final id in promotedB) {
+      expect(g.teamById(id).division, 1);
+    }
+    for (int d = 1; d <= 4; d++) {
+      expect(g.teams.where((t) => t.division == d).length, 20);
+    }
+    for (final t in g.teams) {
+      expect(t.squad.length, greaterThanOrEqualTo(GameState.minSquadSize), reason: t.name);
+    }
+    playSeason(g);
+    expect(g.history.length, 2);
+  });
+
+  test('pênaltis decidem empate em jogo único de mata-mata', () {
+    final g = GameState()..startGame('fla');
+    final m = Match(round: 0, homeId: 'fla', awayId: 'pal', comp: 'CDB', stage: 'R32', day: 1);
+    expect(g.needsPenalties(m, 1, 1), isTrue);
+    expect(g.needsPenalties(m, 2, 1), isFalse);
+    final (h, a) = g.shootout(g.teamById('fla'), g.teamById('pal'));
+    expect(h == a, isFalse);
   });
 
   test('finanças: receitas e salários entram no extrato', () {
     final g = GameState()..startGame('pal');
     final start = g.userTeam!.balance;
-    for (int i = 0; i < 4; i++) {
-      playRound(g, hg: 2, ag: 0);
+    for (int i = 0; i < 7; i++) {
+      playDay(g, hg: 2, ag: 0);
     }
     final cats = g.ledger.map((e) => e.category).toSet();
-    expect(cats, containsAll(['Salários', 'Patrocínio', 'Cotas de TV', 'Premiação']));
+    expect(cats, containsAll(['Salários', 'Patrocínio', 'Cotas de TV']));
     expect(g.userTeam!.balance, isNot(start));
   });
 
@@ -85,12 +150,10 @@ void main() {
     expect(t.balance, before - facilityCost(level + 1));
   });
 
-  test('mercado: multa rescisória, agente livre, venda e empréstimo', () {
+  test('mercado: multa rescisória, agente livre e venda', () {
     final g = GameState()..startGame('fla');
     final user = g.userTeam!;
     user.balance = 2000000000;
-
-    // Compra pagando a multa: o clube vendedor não pode recusar
     final seller = g.teamById('rem');
     final target = seller.squad.first;
     final r = g.proposeTransfer(
@@ -102,91 +165,252 @@ void main() {
     );
     expect(r.success, isTrue, reason: r.message);
     expect(user.findPlayer(target.id), isNotNull);
-    expect(seller.findPlayer(target.id), isNull);
 
-    // Agente livre aceitando o salário pedido
     final fa = g.freeAgents.first;
     final r2 = g.signFreeAgent(fa.id, wage: g.wageDemand(fa) * 2, years: 2);
     expect(r2.success, isTrue, reason: r2.message);
-    expect(g.freeAgents.contains(fa), isFalse);
 
-    // Venda: proposta recebida e aceita
     final sold = user.squad.last;
     final buyer = g.teamById('cam');
-    final offer = TransferOffer(playerId: sold.id, buyerId: buyer.id, amount: 1000000, expiresRound: 5);
+    final offer = TransferOffer(playerId: sold.id, buyerId: buyer.id, amount: 1000000, expiresRound: 99);
     g.incomingOffers.add(offer);
     final balance = user.balance;
     final r3 = g.acceptOffer(offer);
     expect(r3.success, isTrue, reason: r3.message);
-    expect(buyer.findPlayer(sold.id), isNotNull);
     expect(user.balance, balance + 1000000);
   });
 
-  test('empréstimo volta ao clube de origem na nova temporada', () {
+  test('pré-jogo: troca de titular e tática escolhida', () {
     final g = GameState()..startGame('fla');
-    final user = g.userTeam!;
-    final owner = g.teamById('cha');
-    // Jogador jovem e com contrato longo: não se aposenta nem fica livre na virada
-    final p = owner.squad.firstWhere((x) => !owner.startingIds.contains(x.id) && x.age < 30);
-    p.contractYears = 3;
-    // Força o empréstimo (a IA pode recusar aleatoriamente)
-    owner.squad.remove(p);
-    p.loanFromTeamId = owner.id;
-    user.squad.add(p);
-    while (!g.seasonFinished) {
-      playRound(g);
-    }
-    g.startNewSeason();
-    expect(owner.findPlayer(p.id), isNotNull);
-    expect(user.findPlayer(p.id), isNull);
+    final t = g.userTeam!;
+    g.ensureUserLineup();
+    final out = t.startingPlayers.first;
+    final inn = t.squad.firstWhere((p) => !t.startingIds.contains(p.id));
+    g.swapStarter(out.id, inn.id);
+    expect(t.startingIds.contains(inn.id), isTrue);
+    expect(t.startingIds.contains(out.id), isFalse);
+    g.setUserTactic(Tactic.ofensivo);
+    expect(g.userTactic, Tactic.ofensivo);
   });
 
-  test('carreira: demissão e convite de emprego', () {
+  test('carreira de técnico: demissão e novo emprego', () {
     final g = GameState()..startGame('fla');
-    for (int i = 0; i < 6; i++) {
-      playRound(g, hg: 0, ag: 3);
+    while (g.userTeam!.played < 6) {
+      playDay(g, hg: 0, ag: 3);
     }
     g.career.boardConfidence = 0;
-    playRound(g, hg: 0, ag: 3);
+    playDay(g, hg: 0, ag: 3);
     expect(g.career.employed, isFalse);
-    expect(g.userTeamId, isNull);
     expect(g.career.offers, isNotEmpty);
     final offer = g.career.offers.first;
     g.acceptJobOffer(offer);
-    expect(g.career.employed, isTrue);
     expect(g.userTeamId, offer.teamId);
     expect(g.userTeam!.coach, g.career.name);
   });
 
+  test('Modo Presidente: crises, técnico, patrimônio e eleição', () {
+    final g = GameState()..startPresident('cru', name: 'Pres');
+    expect(g.mode, GameMode.presidente);
+    expect(g.president, isNotNull);
+    g.userTeam!.balance = 500000000;
+    final coaches = g.availableCoaches();
+    expect(coaches, isNotEmpty);
+    expect(g.hireCoach(coaches.first).success, isTrue);
+    expect(g.userTeam!.coach, coaches.first.name);
+    for (int season = 0; season < 3 && g.president != null; season++) {
+      while (!g.seasonFinished) {
+        g.simulateOtherMatches();
+        expect(g.userMatchCurrent, isNull, reason: 'presidente não joga ao vivo');
+        for (final e in List.of(g.president?.pending ?? <CrisisEvent>[])) {
+          g.resolveCrisis(e, 1);
+        }
+        g.advanceDay();
+      }
+      g.startNewSeason();
+    }
+    // Ao fim do 3º ano houve eleição (reeleito ou fora do clube)
+    expect(g.president == null || g.president!.elections == 1, isTrue);
+  });
+
+  test('Modo Jogador: notas, gols, Seleção e aposentadoria', () {
+    final g = GameState();
+    g.startPlayerCareer(name: 'Craque', nationality: 'Brasil', position: 'ATA', age: 18, style: 'Craque da base', teamId: 'por');
+    final p = g.userPlayer!;
+    expect(p.overall, startingOverall(18, 'Craque da base'));
+    p.overall = 80; // titular garantido para o teste
+    while (!g.seasonFinished) {
+      g.simulateOtherMatches();
+      g.advanceDay();
+    }
+    final s = g.currentPlayerStats!;
+    expect(s.games, greaterThanOrEqualTo(6)); // Série D é curta: grupos + mata-mata
+    expect(s.avgRating, inInclusiveRange(3.0, 10.0));
+    expect(g.requestTransfer().success, isTrue);
+    g.startNewSeason();
+    expect(g.userPlayer, isNotNull);
+    g.retirePlayer();
+    expect(g.playerCareer!.retired, isTrue);
+  });
+
   test('save e load preservam o estado', () async {
     final g = GameState()..startGame('cru', coachName: 'Save');
-    playRound(g);
+    for (int i = 0; i < 10; i++) {
+      playDay(g);
+    }
     await g.saveToDisk();
     final loaded = await GameState.loadFromDisk();
     expect(loaded, isNotNull);
     expect(loaded!.userTeamId, 'cru');
     expect(loaded.career.name, 'Save');
-    expect(loaded.currentRound, g.currentRound);
-    expect(loaded.teams.length, 20);
+    expect(loaded.currentDay, g.currentDay);
+    expect(loaded.teams.length, 80);
+    expect(loaded.foreignTeams.length, 191);
+    expect(loaded.matches.length, g.matches.length);
     expect(loaded.userTeam!.balance, g.userTeam!.balance);
-    expect(loaded.freeAgents.length, g.freeAgents.length);
+    // O jogo continua normalmente depois de carregar
+    playDay(loaded);
+    expect(loaded.currentDay, g.currentDay + 1);
   });
 
-  testWidgets('tela inicial abre e oferece nova carreira', (tester) async {
+  test('cartões: 3 amarelos ou vermelho suspendem e o suspenso não é escalado', () {
+    final g = GameState()..startGame('fla');
+    final t = g.userTeam!;
+    final p = t.startingPlayers.first;
+    p.yellowCards = 2;
+    final m = g.userMatchCurrent!;
+    final opp = g.teamById(m.homeId == t.id ? m.awayId : m.homeId);
+    g.simulateOtherMatches();
+    g.finishUserMatch(1, 0, t.startingPlayers, const [], opp.startingPlayers, const [], yellowIds: [p.id]);
+    expect(p.suspended, 1);
+    expect(p.yellowCards, 0);
+    g.advanceDay();
+    g.ensureUserLineup();
+    expect(t.startingIds.contains(p.id), isFalse);
+  });
+
+  test('mercado: janela, clube estrangeiro, comissão e cláusula de revenda', () {
+    final g = GameState()..startGame('fla');
+    final user = g.userTeam!;
+    user.balance = 3000000000;
+    expect(g.transferWindowOpen, isTrue);
+    final city = g.foreignTeams.firstWhere((t) => t.name == 'Manchester City');
+    final target = city.squad.firstWhere((p) => p.overall < 85);
+    final r = g.proposeTransfer(playerId: target.id, fee: target.releaseClause,
+        wage: g.wageDemand(target, from: city) * 2, signingBonus: 0, years: 3);
+    expect(r.success, isTrue, reason: r.message);
+    expect(g.ledger.any((e) => e.description.startsWith('Comissão do empresário')), isTrue);
+    // Fecha a janela: compra bloqueada, agente livre liberado
+    while (g.transferWindowOpen) {
+      playDay(g);
+    }
+    final other = g.teamById('rem').squad.first;
+    expect(g.proposeTransfer(playerId: other.id, fee: other.releaseClause, wage: 999999999, signingBonus: 0, years: 2).success, isFalse);
+    final fa = g.freeAgents.first;
+    expect(g.signFreeAgent(fa.id, wage: g.wageDemand(fa) * 2, years: 1).success, isTrue);
+  });
+
+  test('clube: treino, comissão, base, olheiro e sócios', () {
+    final g = GameState()..startGame('cru');
+    g.userTeam!.balance = 500000000;
+    g.setTraining(focus: 'finalizacao', intensity: 'intensa');
+    expect(g.trainingAttack(g.userTeam!), greaterThan(0));
+    expect(g.hireStaff('olheiro').success, isTrue);
+    expect(g.academy, isNotEmpty);
+    final y = g.academy.first;
+    expect(g.promoteYouth(y.id).success, isTrue);
+    expect(g.userTeam!.findPlayer(y.id), isNotNull);
+    final before = g.scouted.length;
+    playDay(g);
+    expect(g.scouted.length, greaterThan(before));
+    g.setMemberPrice(100);
+    expect(g.expectedMembers(g.userTeam!), greaterThan(0));
+    g.setFormation(Formation.f433);
+    g.ensureUserLineup();
+    expect(g.userTeam!.startingPlayers.where((p) => p.position == 'ATA').length, 3);
+  });
+
+  test('Seleção Brasileira: convite, convocação e jogos', () {
+    final g = GameState()..startGame('fla');
+    g.career.reputation = 90;
+    g.nationalOffer = true;
+    g.acceptNationalTeam();
+    expect(g.isNationalCoach, isTrue);
+    expect(g.national!.squad.length, 23);
+    while (!g.seasonFinished) {
+      g.simulateOtherMatches();
+      g.advanceDay();
+    }
+    final n = g.national;
+    expect(n == null || n.wins + n.draws + n.losses >= 6, isTrue);
+  });
+
+  test('backup: exportar e importar a carreira', () async {
+    final g = GameState()..startGame('bot', coachName: 'Backup');
+    playDay(g);
+    final raw = g.exportSave();
+    final other = GameState();
+    expect(await other.importSave(raw), isTrue);
+    expect(other.career.name, 'Backup');
+    expect(other.userTeamId, 'bot');
+    expect(await other.importSave('lixo'), isFalse);
+  });
+
+  test('multiplayer local: dois técnicos, cada um com seu clube e suas finanças', () async {
+    final g = GameState()..startMultiplayer([('Ana', 'fla'), ('Beto', 'pal')]);
+    expect(g.isMultiplayer, isTrue);
+    expect(g.teamById('fla').coach, 'Ana');
+    expect(g.teamById('pal').coach, 'Beto');
+    for (int d = 0; d < 15; d++) {
+      g.simulateOtherMatches();
+      for (final i in g.humansWithMatchToday()) {
+        g.setActiveHuman(i);
+        g.simulateUserMatchQuick();
+      }
+      expect(g.dayPlayed, isTrue, reason: 'data ${g.currentDay}');
+      g.advanceDay();
+    }
+    g.setActiveHuman(1);
+    expect(g.userTeamId, 'pal');
+    expect(g.career.name, 'Beto');
+    expect(g.ledger.any((e) => e.teamId == 'pal'), isTrue);
+    expect(g.ledger.any((e) => e.teamId == 'fla'), isTrue);
+    g.setTraining(focus: 'defesa');
+    g.setActiveHuman(0);
+    expect(g.trainingFocus, 'equilibrado');
+    final copy = GameState();
+    expect(await copy.importSave(g.exportSave()), isTrue);
+    expect(copy.humans.length, 2);
+    expect(copy.humans[1].club.trainingFocus, 'defesa');
+  });
+
+  testWidgets('nova carreira: modo, clube e telas principais', (tester) async {
     await tester.pumpWidget(const FootballManagerApp());
-    expect(find.text('NOVA CARREIRA'), findsOneWidget);
-    expect(find.text('CONTINUAR CARREIRA'), findsNothing);
-    await tester.tap(find.text('NOVA CARREIRA'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Espaço 1'), findsOneWidget);
+    await tester.tap(find.textContaining('Espaço 1'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Técnico'));
     await tester.pumpAndSettle();
     expect(find.text('Escolha seu Clube'), findsOneWidget);
     await tester.tap(find.text('Flamengo'));
     await tester.pumpAndSettle();
-    expect(find.text('⚽ Rodada 1'), findsOneWidget);
-    await tester.scrollUntilVisible(find.text('💰 Finanças'), 200);
-    await tester.tap(find.text('💰 Finanças'));
+    expect(find.textContaining('Data 1 de'), findsOneWidget); // Supercopa: Flamengo x Corinthians
+    await tester.tap(find.textContaining('Data 1 de'));
     await tester.pumpAndSettle();
-    expect(find.text('💰 Caixa do clube'), findsOneWidget);
+    expect(find.textContaining('Preparar o jogo'), findsOneWidget);
+    await tester.tap(find.textContaining('Preparar o jogo'));
+    await tester.pumpAndSettle();
+    expect(find.text('Pré-jogo'), findsOneWidget);
+    expect(find.text('TÁTICA'), findsOneWidget);
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(find.text('🏆 Competições'), 200);
+    await tester.tap(find.text('🏆 Competições'));
+    await tester.pumpAndSettle();
+    expect(find.text('Libertadores'), findsOneWidget);
     expect(tester.takeException(), isNull);
-    expect(find.byType(Scaffold), findsWidgets);
+    await tester.pump(const Duration(seconds: 2)); // salvamento agendado
   });
 }

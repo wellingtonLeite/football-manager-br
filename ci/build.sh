@@ -21,6 +21,23 @@ prepare() {
     rm -f test/widget_test.dart
   fi
   flutter pub get
+  setup_signing
+}
+
+# Chave fixa de assinatura vinda dos segredos do GitHub (Settings › Secrets › Actions).
+setup_signing() {
+  if [ -n "${ANDROID_KEYSTORE_BASE64:-}" ] && [ -n "${ANDROID_KEYSTORE_PASSWORD:-}" ]; then
+    echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > android/app/upload-keystore.jks
+    cat > android/key.properties <<PROPS
+storePassword=$ANDROID_KEYSTORE_PASSWORD
+keyPassword=$ANDROID_KEYSTORE_PASSWORD
+keyAlias=upload
+storeFile=upload-keystore.jks
+PROPS
+    echo "APK será assinado com a chave fixa do projeto."
+  else
+    echo "AVISO: segredos ANDROID_KEYSTORE_* não configurados; usando chave de depuração."
+  fi
 }
 
 case "$phase" in

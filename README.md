@@ -1,22 +1,25 @@
 # football-manager-br
 
-Jogo de gerenciamento de futebol no estilo Brasfoot, feito em Flutter: Série A 2026, com elencos e técnicos atualizados em 20/10/2026.
+Jogo de gerenciamento de futebol no estilo Brasfoot, feito em Flutter: futebol brasileiro e mundial na temporada 2026, com elencos e técnicos atualizados em 20/10/2026.
 
 ## O que já está no jogo
 
-| Fase | Conteúdo |
+| Área | Conteúdo |
 |---|---|
-| 1–3 | 20 clubes reais, elencos, calendário turno/returno, tabela e escudos desenhados em código |
-| 4 | Partida ao vivo com narração, táticas, IA reativa, 5 substituições e palestra no intervalo |
-| 5 | XP e evolução, energia, moral e força condicionada |
-| 6 | Vibração, moral da torcida, coletiva de imprensa |
-| 7 | Save/load automático e tela inicial com "Continuar Carreira" |
-| 8 | **Finanças**: caixa, folha mensal, bilheteria, premiações, patrocínio renegociável, cotas de TV, investimentos (CT, estádio, DM), gráfico e extrato |
-| 9 | **Mercado**: contratar (proposta, salário, luvas e anos de contrato), multa rescisória, empréstimo, agentes livres, lista de transferências, propostas da IA, renovação e rescisão |
-| 10A | **Carreira de técnico**: reputação, metas da diretoria, confiança, demissão, convites de outros clubes e histórico |
-| Extra | Lesões (reduzidas pelo DM), escalação manual, base revelando jovens, aposentadorias e Palmarès das temporadas |
+| Mundo | 80 clubes brasileiros (Séries A–D 2026) + 152 clubes de 8 ligas do exterior (Inglaterra, Espanha, Itália, Alemanha, França, Portugal, Arábia Saudita e Argentina) + clubes sul-americanos das copas. Elencos reais (Wikipédia, out/2026); craques mundiais com notas próprias |
+| Competições | Supercopa do Brasil, Recopa, estaduais e copas regionais, Séries A–C (4 sobem/4 descem), Série D em grupos regionais + mata-mata, Copa do Brasil, Libertadores e Sul-Americana (grupos reais de 2026), Liga dos Campeões, Copa Intercontinental e as 8 ligas estrangeiras |
+| Partida | Pré-jogo com formação (4-4-2, 4-3-3, 4-5-1, 3-5-2, 3-4-3, 5-3-2), tática e titulares; jogo ao vivo com campinho 2D, narração com velocidade ajustável, cartões amarelos/vermelhos e suspensões, lesões, substituições, palestra, pênaltis e estatísticas (posse, finalizações) |
+| Estatísticas | Artilharia por competição, assistências, notas, seleção da rodada, prêmios (Bola de Ouro, Artilheiro, Revelação, Técnico do ano) e recordes do clube |
+| Clube | Finanças, investimentos, treino (foco e intensidade), comissão técnica, categorias de base, olheiros (potencial), preço do ingresso e sócio-torcedor |
+| Mercado | Janelas de transferência, compras no Brasil e no exterior, comissão de empresário, empréstimo com opção de compra, cláusula de revenda, agentes livres, negócios entre clubes da IA |
+| Modos | Técnico (com convite para a Seleção Brasileira, Copa América e Copa do Mundo), Presidente, Jogador e Multiplayer local (2 a 4 técnicos) |
+| Extras | 3 espaços de save com backup (exportar/importar), editor de clubes e jogadores, 20 conquistas, tutorial, dificuldade (fácil/normal/difícil), sons sintetizados e vibração |
 
-Ainda não feitos: Modo Presidente (10B), Modo Jogador (10C), Séries B/C/D, estaduais, Copa do Brasil, Libertadores e Sul-Americana.
+Overall e idades dos jogadores são estimativas do jogo. Técnicos da Série D e dos clubes sul-americanos só de copa são fictícios.
+
+## Assinatura do APK (atualizar sem desinstalar)
+
+O build usa a chave guardada nos segredos do repositório (`ANDROID_KEYSTORE_BASE64` e `ANDROID_KEYSTORE_PASSWORD`, em *Settings › Secrets and variables › Actions*). Sem esses segredos, o APK sai com uma chave provisória e cada versão nova exige desinstalar a anterior.
 
 ## Gerar o APK pelo GitHub
 
