@@ -5,6 +5,7 @@ import '../game/models.dart';
 import '../game/data.dart';
 import 'shield.dart';
 import 'live_match_screen.dart';
+import 'audio_service.dart';
 
 const Color kGreen = Color(0xFF1B5E20);
 
@@ -46,9 +47,12 @@ class TeamSelectScreen extends StatelessWidget {
             ),
             trailing: Text('★' * c.stars,
                 style: const TextStyle(color: Colors.amber)),
-            onTap: () => context
-                .read<GameState>()
-                .startGame(c.shortName.toLowerCase()),
+            onTap: () {
+              context.read<AudioService>().playButton();
+              context
+                  .read<GameState>()
+                  .startGame(c.shortName.toLowerCase());
+            },
           );
         },
       ),
@@ -62,9 +66,19 @@ class HomeScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final game = context.watch<GameState>();
+    final audio = context.watch<AudioService>();
     final team = game.userTeam!;
     return Scaffold(
-      appBar: AppBar(title: Text(team.name), backgroundColor: kGreen),
+      appBar: AppBar(
+        title: Text(team.name),
+        backgroundColor: kGreen,
+        actions: [
+          IconButton(
+            icon: Icon(audio.muted ? Icons.volume_off : Icons.volume_up),
+            onPressed: audio.toggleMute,
+          ),
+        ],
+      ),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
@@ -98,6 +112,14 @@ class HomeScreen extends StatelessWidget {
                       color: Colors.amber.shade300,
                       fontSize: 13,
                     ),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: [
+                      _moraleIndicator('👥 Torcida', team.fanMorale, team.fanMoodStatus == FanMood.apoio ? Colors.green : team.fanMoodStatus == FanMood.protesto ? Colors.red : Colors.orange),
+                      _moraleIndicator('📰 Imprensa', team.pressMorale, team.pressMoodStatus == PressMood.positivo ? Colors.green : team.pressMoodStatus == PressMood.critico ? Colors.red : Colors.orange),
+                    ],
                   ),
                   if (!game.seasonFinished) ...[
                     const SizedBox(height: 8),
@@ -155,6 +177,27 @@ class HomeScreen extends StatelessWidget {
     );
   }
 
+  Widget _moraleIndicator(String label, int value, Color color) {
+    return Column(
+      children: [
+        Text(label, style: const TextStyle(color: Colors.white70, fontSize: 11)),
+        const SizedBox(height: 4),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.2),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: color, width: 1),
+          ),
+          child: Text(
+            '$value%',
+            style: TextStyle(color: color, fontWeight: FontWeight.bold),
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _menuButton(
       BuildContext context, String label, Color color, VoidCallback onTap) {
     return SizedBox(
@@ -168,7 +211,10 @@ class HomeScreen extends StatelessWidget {
             borderRadius: BorderRadius.circular(12),
           ),
         ),
-        onPressed: onTap,
+        onPressed: () {
+          context.read<AudioService>().playButton();
+          onTap();
+        },
         child: Text(
           label,
           style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
@@ -230,10 +276,13 @@ class RoundScreen extends StatelessWidget {
                       backgroundColor: Colors.orange,
                       foregroundColor: Colors.white,
                     ),
-                    onPressed: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => const TableScreen()),
-                    ),
+                    onPressed: () {
+                      context.read<AudioService>().playButton();
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const TableScreen()),
+                      );
+                    },
                     child: const Text('Ver Classificação Final'),
                   ),
                 ),
@@ -249,7 +298,10 @@ class RoundScreen extends StatelessWidget {
                       backgroundColor: Colors.green,
                       foregroundColor: Colors.white,
                     ),
-                    onPressed: game.startNewSeason,
+                    onPressed: () {
+                      context.read<AudioService>().playButton();
+                      game.startNewSeason();
+                    },
                     child: Text(
                       '🔄 Iniciar Temporada ${game.seasonYear + 1}',
                     ),
@@ -288,15 +340,23 @@ class RoundScreen extends StatelessWidget {
                     foregroundColor: Colors.white,
                   ),
                   onPressed: played
-                      ? game.advanceRound
+                      ? () {
+                          context.read<AudioService>().playButton();
+                          game.advanceRound();
+                        }
                       : () {
+                          context.read<AudioService>().playButton();
                           game.simulateOtherMatches();
                           Navigator.push(
                             context,
                             MaterialPageRoute(
                               builder: (_) => const LiveMatchScreen(),
                             ),
-                          );
+                          ).then((_) {
+                            if (game.currentRoundPlayed) {
+                              _showPressConference(context, game);
+                            }
+                          });
                         },
                   child: Text(
                     played
@@ -313,6 +373,15 @@ class RoundScreen extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+
+  void _showPressConference(BuildContext context, GameState game) {
+    final questions = game.generatePressConference();
+    if (questions.isEmpty) return;
+    showDialog(
+      context: context,
+      builder: (dlg) => PressConferenceDialog(questions: questions, game: game),
     );
   }
 
@@ -369,214 +438,62 @@ class RoundScreen extends StatelessWidget {
   }
 }
 
-class SquadScreen extends StatelessWidget {
-  const SquadScreen({super.key});
+class PressConferenceDialog extends StatefulWidget {
+  final List<PressConference> questions;
+  final GameState game;
+
+  const PressConferenceDialog({
+    super.key,
+    required this.questions,
+    required this.game,
+  });
+
+  @override
+  State<PressConferenceDialog> createState() => _PressConferenceDialogState();
+}
+
+class _PressConferenceDialogState extends State<PressConferenceDialog> {
+  int currentQ = 0;
+  String? feedback;
+  bool answered = false;
 
   @override
   Widget build(BuildContext context) {
-    final team = context.watch<GameState>().userTeam!;
-    const order = ['GOL', 'ZAG', 'LAT', 'VOL', 'MEI', 'ATA'];
-    final widgets = <Widget>[];
-    for (final pos in order) {
-      final list = team.squad.where((p) => p.position == pos).toList()
-        ..sort((a, b) => b.overall.compareTo(a.overall));
-      widgets.add(Padding(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
-        child: Text(
-          pos,
-          style: const TextStyle(
-            color: Colors.greenAccent,
-            fontWeight: FontWeight.bold,
-            letterSpacing: 3,
+    if (currentQ >= widget.questions.length) {
+      return AlertDialog(
+        backgroundColor: const Color(0xFF263238),
+        title: const Text('📰 Coletiva Encerrada',
+            style: TextStyle(color: Colors.white)),
+        content: const Text('Obrigado pelas respostas!',
+            style: TextStyle(color: Colors.white70)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Fechar'),
           ),
-        ),
-      ));
-      for (final p in list) {
-        final tit = team.startingIds.contains(p.id);
-        widgets.add(ListTile(
-          dense: true,
-          leading: CircleAvatar(
-            backgroundColor: _overallColor(p.overall),
-            child: Text(
-              '${p.overall}',
-              style: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ),
-          title: Row(
-            children: [
-              if (tit)
-                Container(
-                  margin: const EdgeInsets.only(right: 6),
-                  padding: const EdgeInsets.symmetric(horizontal: 4),
-                  decoration: BoxDecoration(
-                    color: Colors.amber,
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: const Text(
-                    'TIT',
-                    style: TextStyle(
-                      fontSize: 9,
-                      color: Colors.black,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-              Expanded(
-                child: Text(p.name,
-                    style: const TextStyle(color: Colors.white)),
-              ),
-            ],
-          ),
-          subtitle: Text(
-            '${p.position} • ${p.age} anos\n⚡${p.energy} • 😊${p.morale} • ⭐${p.xp}/${Player.xpToNext}',
-            style: const TextStyle(color: Colors.white60, fontSize: 11),
-          ),
-        ));
-      }
+        ],
+      );
     }
-    return Scaffold(
-      appBar:
-          AppBar(title: Text('Elenco - ${team.name}'), backgroundColor: kGreen),
-      body: ListView(children: widgets),
-    );
-  }
-}
 
-class TableScreen extends StatelessWidget {
-  const TableScreen({super.key});
-
-  Color? _zoneColor(int idx) {
-    if (idx < 4) return Colors.green.withOpacity(0.25);
-    if (idx < 6) return Colors.teal.withOpacity(0.20);
-    if (idx >= 16) return Colors.red.withOpacity(0.25);
-    return null;
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final game = context.watch<GameState>();
-    final table = game.standings;
-    return Scaffold(
-      appBar: AppBar(
-        title: Text('Série A ${game.seasonYear}'),
-        backgroundColor: kGreen,
-      ),
-      body: ListView.builder(
-        itemCount: table.length + 2,
-        itemBuilder: (context, index) {
-          if (index == 0) {
-            return const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              child: Row(
-                children: [
-                  Expanded(
-                      flex: 1,
-                      child:
-                          Text('#', style: TextStyle(color: Colors.white54))),
-                  Expanded(
-                      flex: 5,
-                      child: Text('Clube',
-                          style: TextStyle(color: Colors.white54))),
-                  Expanded(
-                      flex: 1,
-                      child: Text('P',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(color: Colors.white54))),
-                  Expanded(
-                      flex: 1,
-                      child: Text('J',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(color: Colors.white54))),
-                  Expanded(
-                      flex: 1,
-                      child: Text('SG',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(color: Colors.white54))),
-                ],
-              ),
-            );
-          }
-          if (index == table.length + 1) {
-            return const Padding(
-              padding: EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('🟩 Verde: Libertadores (G4)',
-                      style: TextStyle(color: Colors.white70)),
-                  Text('🟦 Azul: Sul-Americana (5º-6º)',
-                      style: TextStyle(color: Colors.white70)),
-                  Text('🟥 Vermelho: Rebaixamento (Z4)',
-                      style: TextStyle(color: Colors.white70)),
-                ],
-              ),
-            );
-          }
-          final i = index - 1;
-          final t = table[i];
-          final isUser = t.id == game.userTeamId;
-          return Container(
-            color: _zoneColor(i),
-            child: ListTile(
-              dense: true,
-              leading: CircleAvatar(
-                radius: 14,
-                backgroundColor: isUser ? Colors.amber : Colors.grey.shade800,
-                child: Text(
-                  '${i + 1}',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-              title: Row(
-                children: [
-                  ClubShield(shortName: t.shortName, size: 18),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      isUser ? '${t.name} (VOCÊ)' : t.name,
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontWeight:
-                            isUser ? FontWeight.bold : FontWeight.normal,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              trailing: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  SizedBox(
-                      width: 32,
-                      child: Text('${t.points}',
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold))),
-                  SizedBox(
-                      width: 24,
-                      child: Text('${t.played}',
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(color: Colors.white70))),
-                  SizedBox(
-                      width: 32,
-                      child: Text(
-                          '${t.goalDifference > 0 ? '+' : ''}${t.goalDifference}',
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(color: Colors.white70))),
-                ],
-              ),
+    final q = widget.questions[currentQ];
+    return AlertDialog(
+      backgroundColor: const Color(0xFF263238),
+      title: Row(
+        children: [
+          const Text('📰', style: TextStyle(fontSize: 24)),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'Coletiva (${currentQ + 1}/${widget.questions.length})',
+              style: const TextStyle(color: Colors.white),
             ),
-          );
-        },
+          ),
+        ],
       ),
-    );
-  }
-}
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            q.question,
+            style: const TextStyle(
