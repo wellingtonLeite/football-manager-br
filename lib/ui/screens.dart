@@ -99,6 +99,21 @@ class HomeScreen extends StatelessWidget {
                       fontSize: 13,
                     ),
                   ),
+                  if (!game.seasonFinished) ...[
+                    const SizedBox(height: 8),
+                    Builder(builder: (context) {
+                      final m = game.userMatchCurrent;
+                      if (m == null) return const SizedBox.shrink();
+                      final opp = game.teams.firstWhere(
+                          (t) => t.id == (m.homeId == team.id ? m.awayId : m.homeId));
+                      final casa = m.homeId == team.id;
+                      return Text(
+                        'Próximo: ${opp.name} (${casa ? 'casa' : 'fora'}) • Rodada ${m.round}',
+                        style: const TextStyle(
+                            color: Colors.greenAccent, fontSize: 13),
+                      );
+                    }),
+                  ],
                 ],
               ),
             ),
@@ -377,6 +392,7 @@ class SquadScreen extends StatelessWidget {
         ),
       ));
       for (final p in list) {
+        final tit = team.startingIds.contains(p.id);
         widgets.add(ListTile(
           dense: true,
           leading: CircleAvatar(
@@ -389,10 +405,34 @@ class SquadScreen extends StatelessWidget {
               ),
             ),
           ),
-          title: Text(p.name, style: const TextStyle(color: Colors.white)),
+          title: Row(
+            children: [
+              if (tit)
+                Container(
+                  margin: const EdgeInsets.only(right: 6),
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.amber,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: const Text(
+                    'TIT',
+                    style: TextStyle(
+                      fontSize: 9,
+                      color: Colors.black,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              Expanded(
+                child: Text(p.name,
+                    style: const TextStyle(color: Colors.white)),
+              ),
+            ],
+          ),
           subtitle: Text(
-            '${p.position} • ${p.age} anos',
-            style: const TextStyle(color: Colors.white60),
+            '${p.position} • ${p.age} anos\n⚡${p.energy} • 😊${p.morale} • ⭐${p.xp}/${Player.xpToNext}',
+            style: const TextStyle(color: Colors.white60, fontSize: 11),
           ),
         ));
       }
