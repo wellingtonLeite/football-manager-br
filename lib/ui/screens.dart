@@ -17,7 +17,6 @@ Color _overallColor(int o) {
   return Colors.red;
 }
 
-// --- TELA DE INÍCIO ---
 class WelcomeScreen extends StatelessWidget {
   const WelcomeScreen({super.key});
 
@@ -36,7 +35,7 @@ class WelcomeScreen extends StatelessWidget {
             children: [
               const Icon(Icons.sports_soccer, size: 80, color: Colors.white),
               const SizedBox(height: 20),
-              Text(
+              const Text(
                 'FOOTBALL MANAGER\nBRASIL 2026',
                 textAlign: TextAlign.center,
                 style: TextStyle(
@@ -90,14 +89,14 @@ class WelcomeScreen extends StatelessWidget {
                             actions: [
                               TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar')),
                               TextButton(
-                                onPressed: () {
+                                onPressed: () async {
                                   Navigator.pop(ctx);
-                                  game.deleteSave().then((_) {
-                                    Navigator.pushReplacement(
-                                      context,
-                                      MaterialPageRoute(builder: (_) => const TeamSelectScreen()),
-                                    );
-                                  });
+                                  await game.deleteSave();
+                                  if (!context.mounted) return;
+                                  Navigator.pushReplacement(
+                                    context,
+                                    MaterialPageRoute(builder: (_) => const TeamSelectScreen()),
+                                  );
                                 },
                                 child: const Text('Confirmar', style: TextStyle(color: Colors.redAccent)),
                               ),
