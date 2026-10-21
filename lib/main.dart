@@ -37,23 +37,9 @@ class FootballManagerApp extends StatelessWidget {
           ),
           useMaterial3: true,
         ),
-        home: const RootScreen(),
+        // A tela inicial detecta o save: "Continuar Carreira" ou "Nova Carreira".
+        home: const WelcomeScreen(),
       ),
     );
-  }
-}
-
-class RootScreen extends StatelessWidget {
-  const RootScreen({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    final game = context.watch<GameState>();
-    
-    if (!game.started) {
-      return const WelcomeScreen();
-    }
-    
-    return const HomeScreen();
   }
 }

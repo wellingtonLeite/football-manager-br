@@ -47,6 +47,7 @@ class _LiveMatchScreenState extends State<LiveMatchScreen> {
   int ag = 0;
   int nextChunk = 1;
   int subsUsed = 0;
+  int aiSubsUsed = 0;
   static const int maxSubs = 5;
   bool finished = false;
   bool halftime = false;
@@ -75,9 +76,9 @@ class _LiveMatchScreenState extends State<LiveMatchScreen> {
     away = game.teams.firstWhere((t) => t.id == match.awayId);
     userIsHome = match.homeId == game.userTeamId;
     homeOn = List<Player>.from(home.startingPlayers);
-    homeBench = home.squad.where((p) => !homeOn.contains(p)).toList();
+    homeBench = home.squad.where((p) => !homeOn.contains(p) && !p.injured).toList();
     awayOn = List<Player>.from(away.startingPlayers);
-    awayBench = away.squad.where((p) => !awayOn.contains(p)).toList();
+    awayBench = away.squad.where((p) => !awayOn.contains(p) && !p.injured).toList();
     
     audio.playWhistle();
     audio.playCrowd();
@@ -125,11 +126,75 @@ class _LiveMatchScreenState extends State<LiveMatchScreen> {
     });
   }
 
+  /// Eventos são gerados em blocos de 15 minutos; se o jogador do evento já
+  /// saiu de campo, o gol é atribuído a quem está em campo e o resto é descartado.
+  MatchEvent? _validate(MatchEvent e) {
+    if (e.playerId == null) return e;
+    final onPitch = e.teamId == home.id ? homeOn : awayOn;
+    if (onPitch.any((p) => p.id == e.playerId)) return e;
+    if (e.type != 'GOAL' || onPitch.isEmpty) return null;
+    final team = e.teamId == home.id ? home : away;
+    final s = game.pickScorer(onPitch);
+    return MatchEvent(
+      minute: e.minute,
+      type: 'GOAL',
+      teamId: e.teamId,
+      playerId: s.id,
+      text: "⚽ GOL do ${team.name}! ${s.name} marca aos ${e.minute}'!",
+    );
+  }
+
+  void _injury(MatchEvent e) {
+    final isHome = e.teamId == home.id;
+    final team = isHome ? home : away;
+    final p = team.findPlayer(e.playerId!);
+    if (p == null) return;
+    p.injuredRounds = game.rollInjury(team);
+    p.energy = p.energy < 30 ? p.energy : 30;
+    audio.playWhistle();
+    if (e.teamId == game.userTeamId) {
+      feed.insert(
+        0,
+        MatchEvent(
+          minute: e.minute,
+          type: 'INFO',
+          teamId: '',
+          text: '⚠️ ${p.name} está lesionado: faça uma substituição (⇄ no topo).',
+        ),
+      );
+      return;
+    }
+    // IA substitui o lesionado, se puder
+    final on = isHome ? homeOn : awayOn;
+    final bench = isHome ? homeBench : awayBench;
+    if (aiSubsUsed >= maxSubs || bench.isEmpty) return;
+    final samePos = bench.where((b) => b.position == p.position).toList();
+    final pool = samePos.isEmpty ? List<Player>.from(bench) : samePos;
+    pool.sort((a, b) => b.overall.compareTo(a.overall));
+    final inn = pool.first;
+    on.remove(p);
+    on.add(inn);
+    bench.remove(inn);
+    aiSubsUsed++;
+    feed.insert(
+      0,
+      MatchEvent(
+        minute: e.minute,
+        type: 'SUB',
+        teamId: team.id,
+        text: '🔄 ${team.name}: sai ${p.name} (lesionado), entra ${inn.name}.',
+      ),
+    );
+  }
+
   void _drain(int upTo) {
     while (pending.isNotEmpty && pending.first.minute <= upTo) {
-      final e = pending.removeAt(0);
+      final e = _validate(pending.removeAt(0));
+      if (e == null) continue;
       feed.insert(0, e);
-      if (e.type == 'GOAL') {
+      if (e.type == 'INJURY') {
+        _injury(e);
+      } else if (e.type == 'GOAL') {
         audio.playGoal();
         if (e.teamId == home.id) {
           hg++;
@@ -155,8 +220,8 @@ class _LiveMatchScreenState extends State<LiveMatchScreen> {
         game.teams.firstWhere((t) => t.id == (userIsHome ? match.awayId : match.homeId));
     final aS = aiTeam.pitchStrength(aiOn);
     _updateAiTactic();
-    final hs = userIsHome ? uS + 4.0 : aS + 4.0;
-    final as = userIsHome ? aS : uS;
+    final hs = (userIsHome ? uS : aS) + game.homeAdvantage(home);
+    final aws = userIsHome ? aS : uS;
     final ht = userIsHome ? userTactic : aiTactic;
     final at = userIsHome ? aiTactic : userTactic;
     return game.generateChunk(
@@ -166,7 +231,7 @@ class _LiveMatchScreenState extends State<LiveMatchScreen> {
       homeTactic: ht,
       awayTactic: at,
       homeStrength: hs,
-      awayStrength: as,
+      awayStrength: aws,
       homeOnPitch: homeOn,
       awayOnPitch: awayOn,
     );
@@ -189,7 +254,8 @@ class _LiveMatchScreenState extends State<LiveMatchScreen> {
           aiOn.where((p) => p.position == 'ATA' || p.position == 'MEI').toList();
       final benchPool =
           aiBench.where((p) => p.position == 'ATA' || p.position == 'MEI').toList();
-      if (candidates.isEmpty || benchPool.isEmpty) return;
+      if (candidates.isEmpty || benchPool.isEmpty || aiSubsUsed >= maxSubs) return;
+      aiSubsUsed++;
       candidates.sort((a, b) => a.overall.compareTo(b.overall));
       benchPool.sort((a, b) => b.overall.compareTo(a.overall));
       final out = candidates.first;
@@ -297,7 +363,7 @@ class _LiveMatchScreenState extends State<LiveMatchScreen> {
                                 child: Text('${p.overall}',
                                     style: const TextStyle(color: Colors.white)),
                               ),
-                              title: Text(p.name,
+                              title: Text('${p.injured ? '🚑 ' : ''}${p.name}',
                                   style: const TextStyle(color: Colors.white)),
                               subtitle: Text('${p.position} • ⚡${p.energy}',
                                   style: const TextStyle(color: Colors.white60)),
@@ -307,7 +373,7 @@ class _LiveMatchScreenState extends State<LiveMatchScreen> {
                       )
                     : ListView(
                         children: [
-                          for (final p in List<Player>.from(userBench))
+                          for (final p in userBench.where((b) => !b.injured).toList())
                             ListTile(
                               leading: CircleAvatar(
                                 backgroundColor: Colors.grey.shade700,
@@ -400,7 +466,9 @@ class _LiveMatchScreenState extends State<LiveMatchScreen> {
                             radius: 14,
                             backgroundColor: e.type == 'GOAL'
                                 ? Colors.green
-                                : Colors.grey.shade800,
+                                : e.type == 'INJURY'
+                                    ? Colors.deepOrange
+                                    : Colors.grey.shade800,
                             child: Text(
                               "${e.minute}'",
                               style: const TextStyle(
@@ -415,7 +483,9 @@ class _LiveMatchScreenState extends State<LiveMatchScreen> {
                             style: TextStyle(
                               color: e.type == 'GOAL'
                                   ? Colors.greenAccent
-                                  : Colors.white70,
+                                  : e.type == 'INJURY'
+                                      ? Colors.orangeAccent
+                                      : Colors.white70,
                               fontWeight:
                                   e.type == 'GOAL' ? FontWeight.bold : null,
                             ),

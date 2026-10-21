@@ -6,22 +6,23 @@ class AudioService extends ChangeNotifier {
 
   bool get muted => _muted;
 
+  /// Alguns aparelhos (e o ambiente de testes) não têm vibração: ignora falhas.
+  Future<void> _haptic(Future<void> Function() f) async {
+    if (_muted) return;
+    try {
+      await f();
+    } catch (_) {}
+  }
+
   Future<void> playGoal() async {
-    if (_muted) return;
-    await HapticFeedback.heavyImpact();
+    await _haptic(HapticFeedback.heavyImpact);
     await Future.delayed(const Duration(milliseconds: 100));
-    await HapticFeedback.heavyImpact();
+    await _haptic(HapticFeedback.heavyImpact);
   }
 
-  Future<void> playWhistle() async {
-    if (_muted) return;
-    await HapticFeedback.mediumImpact();
-  }
+  Future<void> playWhistle() => _haptic(HapticFeedback.mediumImpact);
 
-  Future<void> playCard() async {
-    if (_muted) return;
-    await HapticFeedback.lightImpact();
-  }
+  Future<void> playCard() => _haptic(HapticFeedback.lightImpact);
 
   Future<void> playCrowd() async {
     if (_muted) return;
@@ -32,10 +33,7 @@ class AudioService extends ChangeNotifier {
     // Não há nada para parar
   }
 
-  Future<void> playButton() async {
-    if (_muted) return;
-    await HapticFeedback.selectionClick();
-  }
+  Future<void> playButton() => _haptic(HapticFeedback.selectionClick);
 
   void toggleMute() {
     _muted = !_muted;
