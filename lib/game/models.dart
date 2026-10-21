@@ -1,9 +1,7 @@
 import 'dart:math';
 
 enum Tactic { retranca, neutro, ofensivo, tudoOuNada }
-
 enum FanMood { apoio, neutro, protesto }
-
 enum PressMood { positivo, neutro, critico }
 
 class MatchEvent {
@@ -76,6 +74,28 @@ class Player {
     }
     return msgs;
   }
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'name': name,
+    'position': position,
+    'age': age,
+    'overall': overall,
+    'xp': xp,
+    'energy': energy,
+    'morale': morale,
+  };
+
+  factory Player.fromJson(Map<String, dynamic> json) => Player(
+    id: json['id'],
+    name: json['name'],
+    position: json['position'],
+    age: json['age'],
+    overall: json['overall'],
+    xp: json['xp'] ?? 0,
+    energy: json['energy'] ?? 100,
+    morale: json['morale'] ?? 70,
+  );
 }
 
 class Team {
@@ -138,6 +158,53 @@ class Team {
     if (pressMorale <= 40) return PressMood.critico;
     return PressMood.neutro;
   }
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'name': name,
+    'shortName': shortName,
+    'state': state,
+    'stadium': stadium,
+    'coach': coach,
+    'stars': stars,
+    'baseOverall': baseOverall,
+    'squad': squad.map((p) => p.toJson()).toList(),
+    'startingIds': startingIds,
+    'points': points,
+    'wins': wins,
+    'draws': draws,
+    'losses': losses,
+    'goalsFor': goalsFor,
+    'goalsAgainst': goalsAgainst,
+    'played': played,
+    'fanMorale': fanMorale,
+    'pressMorale': pressMorale,
+  };
+
+  factory Team.fromJson(Map<String, dynamic> json) {
+    final t = Team(
+      id: json['id'],
+      name: json['name'],
+      shortName: json['shortName'],
+      state: json['state'],
+      stadium: json['stadium'],
+      coach: json['coach'],
+      stars: json['stars'],
+      baseOverall: json['baseOverall'],
+      squad: (json['squad'] as List).map((p) => Player.fromJson(p)).toList(),
+    );
+    t.startingIds = List<String>.from(json['startingIds'] ?? []);
+    t.points = json['points'] ?? 0;
+    t.wins = json['wins'] ?? 0;
+    t.draws = json['draws'] ?? 0;
+    t.losses = json['losses'] ?? 0;
+    t.goalsFor = json['goalsFor'] ?? 0;
+    t.goalsAgainst = json['goalsAgainst'] ?? 0;
+    t.played = json['played'] ?? 0;
+    t.fanMorale = json['fanMorale'] ?? 70;
+    t.pressMorale = json['pressMorale'] ?? 70;
+    return t;
+  }
 }
 
 class Match {
@@ -150,6 +217,21 @@ class Match {
   Match({required this.round, required this.homeId, required this.awayId});
 
   bool get isPlayed => homeGoals != null && awayGoals != null;
+
+  Map<String, dynamic> toJson() => {
+    'round': round,
+    'homeId': homeId,
+    'awayId': awayId,
+    'homeGoals': homeGoals,
+    'awayGoals': awayGoals,
+  };
+
+  factory Match.fromJson(Map<String, dynamic> json) => Match(
+    round: json['round'],
+    homeId: json['homeId'],
+    awayId: json['awayId'],
+  )..homeGoals = json['homeGoals']
+   ..awayGoals = json['awayGoals'];
 }
 
 class PressConference {
