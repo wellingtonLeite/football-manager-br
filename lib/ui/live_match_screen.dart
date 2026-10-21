@@ -33,17 +33,35 @@ class _LiveMatchScreenState extends State<LiveMatchScreen> {
   late final Match match;
   late final Team home;
   late final Team away;
+  late final bool userIsHome;
+  late List<Player> homeOn;
+  late List<Player> homeBench;
+  late List<Player> awayOn;
+  late List<Player> awayBench;
 
   Timer? _timer;
   int minute = 0;
   int hg = 0;
   int ag = 0;
-  int nextChunkStart = 0;
+  int nextChunk = 1;
+  int subsUsed = 0;
+  static const int maxSubs = 5;
   bool finished = false;
+  bool halftime = false;
   bool applied = false;
-  Tactic tactic = Tactic.neutro;
+  Tactic userTactic = Tactic.neutro;
+  Tactic aiTactic = Tactic.neutro;
+  String? talkApplied;
   final List<MatchEvent> feed = [];
   final List<MatchEvent> pending = [];
+  final List<String> userScorerIds = [];
+  final List<String> aiScorerIds = [];
+  List<String> growthMsgs = [];
+
+  List<Player> get userOn => userIsHome ? homeOn : awayOn;
+  List<Player> get userBench => userIsHome ? homeBench : awayBench;
+  List<Player> get aiOn => userIsHome ? awayOn : homeOn;
+  List<Player> get aiBench => userIsHome ? awayBench : homeBench;
 
   @override
   void initState() {
@@ -52,6 +70,11 @@ class _LiveMatchScreenState extends State<LiveMatchScreen> {
     match = game.userMatchCurrent!;
     home = game.teams.firstWhere((t) => t.id == match.homeId);
     away = game.teams.firstWhere((t) => t.id == match.awayId);
+    userIsHome = match.homeId == game.userTeamId;
+    homeOn = List<Player>.from(home.startingPlayers);
+    homeBench = home.squad.where((p) => !homeOn.contains(p)).toList();
+    awayOn = List<Player>.from(away.startingPlayers);
+    awayBench = away.squad.where((p) => !awayOn.contains(p)).toList();
     _timer = Timer.periodic(const Duration(milliseconds: 200), (_) => _tick());
   }
 
@@ -62,37 +85,254 @@ class _LiveMatchScreenState extends State<LiveMatchScreen> {
   }
 
   void _tick() {
-    if (finished) return;
+    if (finished || halftime) return;
     setState(() {
       minute++;
-      if (minute >= nextChunkStart && nextChunkStart < 90) {
-        final end = nextChunkStart + 15 > 90 ? 90 : nextChunkStart + 15;
-        pending.addAll(
-          game.generateChunk(match, nextChunkStart, end, tactic, hg, ag),
+      if (minute == 45) {
+        _drain(45);
+        halftime = true;
+        feed.insert(
+          0,
+          MatchEvent(
+            minute: 45,
+            type: 'INFO',
+            teamId: '',
+            text: '⏱️ INTERVALO: ${home.shortName} $hg x $ag ${away.shortName}',
+          ),
         );
-        pending.sort((a, b) => a.minute.compareTo(b.minute));
-        nextChunkStart = end;
+        _aiHalftime();
+        return;
       }
-      while (pending.isNotEmpty && pending.first.minute <= minute) {
-        final e = pending.removeAt(0);
-        feed.insert(0, e);
-        if (e.type == 'GOAL') {
-          if (e.teamId == home.id) {
-            hg++;
+      if (minute >= nextChunk) {
+        final end = nextChunk + 15 > 90 ? 91 : nextChunk + 15;
+        pending.addAll(_genChunk(nextChunk, end));
+        pending.sort((a, b) => a.minute.compareTo(b.minute));
+        nextChunk = end;
+      }
+      _drain(minute);
+      if (minute >= 90) {
+        _finish();
+      }
+    });
+  }
+
+  void _drain(int upTo) {
+    while (pending.isNotEmpty && pending.first.minute <= upTo) {
+      final e = pending.removeAt(0);
+      feed.insert(0, e);
+      if (e.type == 'GOAL') {
+        if (e.teamId == home.id) {
+          hg++;
+        } else {
+          ag++;
+        }
+        if (e.playerId != null) {
+          if (e.teamId == game.userTeamId) {
+            userScorerIds.add(e.playerId!);
           } else {
-            ag++;
+            aiScorerIds.add(e.playerId!);
           }
         }
       }
-      if (minute >= 90) {
-        finished = true;
-        _timer?.cancel();
-        if (!applied) {
-          applied = true;
-          game.applyUserMatchResult(hg, ag);
-        }
+    }
+  }
+
+  List<MatchEvent> _genChunk(int from, int to) {
+    final uS = game.userTeam!.pitchStrength(userOn);
+    final aiTeam =
+        game.teams.firstWhere((t) => t.id == (userIsHome ? match.awayId : match.homeId));
+    final aS = aiTeam.pitchStrength(aiOn);
+    _updateAiTactic();
+    final hs = userIsHome ? uS + 4.0 : aS + 4.0;
+    final as = userIsHome ? aS : uS;
+    final ht = userIsHome ? userTactic : aiTactic;
+    final at = userIsHome ? aiTactic : userTactic;
+    return game.generateChunk(
+      match: match,
+      minFrom: from,
+      minTo: to,
+      homeTactic: ht,
+      awayTactic: at,
+      homeStrength: hs,
+      awayStrength: as,
+      homeOnPitch: homeOn,
+      awayOnPitch: awayOn,
+    );
+  }
+
+  void _updateAiTactic() {
+    final aiGoals = userIsHome ? ag : hg;
+    final userGoals = userIsHome ? hg : ag;
+    final diff = aiGoals - userGoals;
+    aiTactic = Tactic.neutro;
+    if (minute >= 60 && diff <= -1) aiTactic = Tactic.ofensivo;
+    if (minute >= 70 && diff >= 2) aiTactic = Tactic.retranca;
+  }
+
+  void _aiHalftime() {
+    final aiGoals = userIsHome ? ag : hg;
+    final userGoals = userIsHome ? hg : ag;
+    if (aiGoals < userGoals) {
+      final candidates =
+          aiOn.where((p) => p.position == 'ATA' || p.position == 'MEI').toList();
+      final benchPool =
+          aiBench.where((p) => p.position == 'ATA' || p.position == 'MEI').toList();
+      if (candidates.isEmpty || benchPool.isEmpty) return;
+      candidates.sort((a, b) => a.overall.compareTo(b.overall));
+      benchPool.sort((a, b) => b.overall.compareTo(a.overall));
+      final out = candidates.first;
+      final inn = benchPool.first;
+      aiOn.remove(out);
+      aiBench.add(out);
+      aiOn.add(inn);
+      aiBench.remove(inn);
+      final aiTeam = userIsHome ? away : home;
+      feed.insert(
+        0,
+        MatchEvent(
+          minute: 45,
+          type: 'SUB',
+          teamId: aiTeam.id,
+          text: '🔄 ${aiTeam.name}: sai ${out.name}, entra ${inn.name}.',
+        ),
+      );
+    }
+  }
+
+  void _finish() {
+    finished = true;
+    _timer?.cancel();
+    feed.insert(
+      0,
+      MatchEvent(
+        minute: 90,
+        type: 'INFO',
+        teamId: '',
+        text: '🏁 FIM DE JOGO: ${home.shortName} $hg x $ag ${away.shortName}',
+      ),
+    );
+    if (!applied) {
+      applied = true;
+      growthMsgs = game.finishUserMatch(
+        hg,
+        ag,
+        userOn,
+        userScorerIds,
+        aiOn,
+        aiScorerIds,
+      );
+    }
+  }
+
+  void _applyTalk(String key) {
+    if (talkApplied != null) return;
+    talkApplied = key;
+    for (final p in userOn) {
+      if (key == 'motivar') {
+        p.morale = (p.morale + 6).clamp(0, 100).toInt();
       }
-    });
+      if (key == 'descanso') {
+        p.energy = (p.energy + 10).clamp(0, 100).toInt();
+      }
+      if (key == 'equilibrada') {
+        p.morale = (p.morale + 3).clamp(0, 100).toInt();
+        p.energy = (p.energy + 5).clamp(0, 100).toInt();
+      }
+    }
+    setState(() {});
+  }
+
+  void _openSubSheet() {
+    if (subsUsed >= maxSubs) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Limite de 5 substituições atingido!')),
+      );
+      return;
+    }
+    Player? out;
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: const Color(0xFF263238),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSheet) => Container(
+          height: MediaQuery.of(ctx).size.height * 0.7,
+          color: const Color(0xFF263238),
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(12),
+                child: Text(
+                  out == null
+                      ? '1) Quem SAI? (sub ${subsUsed + 1}/$maxSubs)'
+                      : '2) Quem ENTRA? (${out!.name} sai)',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+              Expanded(
+                child: out == null
+                    ? ListView(
+                        children: [
+                          for (final p in List<Player>.from(userOn))
+                            ListTile(
+                              leading: CircleAvatar(
+                                backgroundColor: Colors.grey.shade700,
+                                child: Text('${p.overall}',
+                                    style: const TextStyle(color: Colors.white)),
+                              ),
+                              title: Text(p.name,
+                                  style: const TextStyle(color: Colors.white)),
+                              subtitle: Text('${p.position} • ⚡${p.energy}',
+                                  style: const TextStyle(color: Colors.white60)),
+                              onTap: () => setSheet(() => out = p),
+                            ),
+                        ],
+                      )
+                    : ListView(
+                        children: [
+                          for (final p in List<Player>.from(userBench))
+                            ListTile(
+                              leading: CircleAvatar(
+                                backgroundColor: Colors.grey.shade700,
+                                child: Text('${p.overall}',
+                                    style: const TextStyle(color: Colors.white)),
+                              ),
+                              title: Text(p.name,
+                                  style: const TextStyle(color: Colors.white)),
+                              subtitle: Text('${p.position} • ⚡${p.energy}',
+                                  style: const TextStyle(color: Colors.white60)),
+                              onTap: () {
+                                setState(() {
+                                  userOn.remove(out);
+                                  userBench.add(out!);
+                                  userOn.add(p);
+                                  userBench.remove(p);
+                                  subsUsed++;
+                                  feed.insert(
+                                    0,
+                                    MatchEvent(
+                                      minute: minute,
+                                      type: 'SUB',
+                                      teamId: game.userTeamId!,
+                                      text:
+                                          '🔄 ${game.userTeam!.name}: sai ${out!.name}, entra ${p.name}.',
+                                    ),
+                                  );
+                                });
+                                Navigator.pop(ctx);
+                              },
+                            ),
+                        ],
+                      ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   @override
@@ -101,11 +341,25 @@ class _LiveMatchScreenState extends State<LiveMatchScreen> {
       appBar: AppBar(
         title: Text('Rodada ${match.round} — AO VIVO'),
         backgroundColor: _kGreen,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.swap_horiz),
+            tooltip: 'Substituição',
+            onPressed: finished ? null : _openSubSheet,
+          ),
+          Padding(
+            padding: const EdgeInsets.only(right: 12),
+            child: Center(
+              child: Text('$subsUsed/$maxSubs',
+                  style: const TextStyle(color: Colors.white70)),
+            ),
+          ),
+        ],
       ),
       body: Column(
         children: [
           _scoreboard(),
-          _tacticBar(),
+          if (halftime && !finished) _halftimePanel() else _tacticBar(),
           const Divider(height: 1),
           Expanded(
             child: feed.isEmpty
@@ -161,7 +415,52 @@ class _LiveMatchScreenState extends State<LiveMatchScreen> {
                           backgroundColor: Colors.orange,
                           foregroundColor: Colors.white,
                         ),
-                        onPressed: () => Navigator.pop(context),
+                        onPressed: () {
+                          showDialog(
+                            context: context,
+                            builder: (dlg) => AlertDialog(
+                              backgroundColor: const Color(0xFF263238),
+                              title: const Text('📈 Pós-Jogo',
+                                  style: TextStyle(color: Colors.white)),
+                              content: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Placar: ${home.shortName} $hg x $ag ${away.shortName}',
+                                    style: const TextStyle(color: Colors.white),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  if (growthMsgs.isEmpty)
+                                    const Text(
+                                      'Sem evoluções desta vez. XP acumulado!',
+                                      style: TextStyle(color: Colors.white70),
+                                    )
+                                  else
+                                    for (final m in growthMsgs)
+                                      Text('⬆️ $m',
+                                          style: const TextStyle(
+                                              color: Colors.greenAccent)),
+                                  const SizedBox(height: 8),
+                                  const Text(
+                                    '⚡ Titulares: -25 de energia (recupera na próxima rodada).',
+                                    style: TextStyle(
+                                        color: Colors.white60, fontSize: 12),
+                                  ),
+                                ],
+                              ),
+                              actions: [
+                                TextButton(
+                                  onPressed: () {
+                                    Navigator.pop(dlg);
+                                    Navigator.pop(context);
+                                  },
+                                  child: const Text('Continuar'),
+                                ),
+                              ],
+                            ),
+                          );
+                        },
                         child: const Text(
                           'FIM DE JOGO → Continuar',
                           style: TextStyle(
@@ -172,7 +471,7 @@ class _LiveMatchScreenState extends State<LiveMatchScreen> {
                       ),
                     )
                   : Text(
-                      kTacticDesc[tactic] ?? '',
+                      kTacticDesc[userTactic] ?? '',
                       textAlign: TextAlign.center,
                       style: const TextStyle(
                         color: Colors.white60,
@@ -198,10 +497,8 @@ class _LiveMatchScreenState extends State<LiveMatchScreen> {
               children: [
                 ClubShield(shortName: home.shortName, size: 36),
                 const SizedBox(height: 4),
-                Text(
-                  home.shortName,
-                  style: const TextStyle(color: Colors.white, fontSize: 12),
-                ),
+                Text(home.shortName,
+                    style: const TextStyle(color: Colors.white, fontSize: 12)),
               ],
             ),
           ),
@@ -230,10 +527,8 @@ class _LiveMatchScreenState extends State<LiveMatchScreen> {
               children: [
                 ClubShield(shortName: away.shortName, size: 36),
                 const SizedBox(height: 4),
-                Text(
-                  away.shortName,
-                  style: const TextStyle(color: Colors.white, fontSize: 12),
-                ),
+                Text(away.shortName,
+                    style: const TextStyle(color: Colors.white, fontSize: 12)),
               ],
             ),
           ),
@@ -242,33 +537,105 @@ class _LiveMatchScreenState extends State<LiveMatchScreen> {
     );
   }
 
+  Widget _halftimePanel() {
+    return Container(
+      color: Colors.black45,
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        children: [
+          const Text('☕ INTERVALO',
+              style: TextStyle(
+                  color: Colors.amber,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16)),
+          const SizedBox(height: 4),
+          Text(
+            talkApplied == null
+                ? 'Palestra: escolha uma opção'
+                : 'Palestra aplicada ✔',
+            style: const TextStyle(color: Colors.white70, fontSize: 12),
+          ),
+          Wrap(
+            spacing: 6,
+            children: [
+              _talkChip('motivar', '🔥 Motivacional'),
+              _talkChip('descanso', '😮‍💨 Descanso'),
+              _talkChip('equilibrada', '📋 Equilibrada'),
+            ],
+          ),
+          const SizedBox(height: 6),
+          _tacticChips(),
+          const SizedBox(height: 8),
+          SizedBox(
+            width: double.infinity,
+            height: 46,
+            child: ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.green,
+                foregroundColor: Colors.white,
+              ),
+              onPressed: () => setState(() {
+                halftime = false;
+                feed.insert(
+                  0,
+                  MatchEvent(
+                    minute: 45,
+                    type: 'INFO',
+                    teamId: '',
+                    text: '⏱️ Bola rolando no 2º tempo!',
+                  ),
+                );
+              }),
+              child: const Text('▶️ Iniciar 2º Tempo'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _talkChip(String key, String label) {
+    return ChoiceChip(
+      label: Text(label),
+      selected: talkApplied == key,
+      selectedColor: Colors.amber,
+      backgroundColor: Colors.grey.shade900,
+      labelStyle: const TextStyle(color: Colors.white, fontSize: 12),
+      onSelected: talkApplied == null ? (v) { if (v) _applyTalk(key); } : null,
+    );
+  }
+
   Widget _tacticBar() {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
-      child: Wrap(
-        alignment: WrapAlignment.center,
-        spacing: 6,
-        runSpacing: 6,
-        children: [
-          for (final t in Tactic.values)
-            ChoiceChip(
-              label: Text(kTacticLabels[t] ?? ''),
-              selected: tactic == t,
-              selectedColor: Colors.green,
-              backgroundColor: Colors.grey.shade900,
-              labelStyle: TextStyle(
-                color: tactic == t ? Colors.white : Colors.white70,
-                fontSize: 12,
-                fontWeight: FontWeight.bold,
-              ),
-              onSelected: finished
-                  ? null
-                  : (v) {
-                      if (v) setState(() => tactic = t);
-                    },
+      child: _tacticChips(),
+    );
+  }
+
+  Widget _tacticChips() {
+    return Wrap(
+      alignment: WrapAlignment.center,
+      spacing: 6,
+      runSpacing: 6,
+      children: [
+        for (final t in Tactic.values)
+          ChoiceChip(
+            label: Text(kTacticLabels[t] ?? ''),
+            selected: userTactic == t,
+            selectedColor: Colors.green,
+            backgroundColor: Colors.grey.shade900,
+            labelStyle: TextStyle(
+              color: userTactic == t ? Colors.white : Colors.white70,
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
             ),
-        ],
-      ),
+            onSelected: finished
+                ? null
+                : (v) {
+                    if (v) setState(() => userTactic = t);
+                  },
+          ),
+      ],
     );
   }
 }
