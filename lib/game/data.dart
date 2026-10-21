@@ -1,4 +1,5 @@
 import 'dart:math';
+import 'finances.dart';
 import 'models.dart';
 
 class ClubInfo {
@@ -213,6 +214,26 @@ int baseOverallForStars(int stars) {
   }
 }
 
+/// Capacidade padrão dos estádios (Fase 8 - bilheteria).
+const Map<String, int> kStadiumCapacity = {
+  'FLA': 78000, 'PAL': 41000, 'CRU': 62000, 'BOT': 47000, 'BAH': 52000,
+  'MIR': 30000, 'SAO': 67000, 'FLU': 78000, 'COR': 49000, 'GRE': 60000,
+  'CAM': 58000, 'RBB': 17000, 'VAS': 24500, 'INT': 50000, 'SAN': 16000,
+  'CEA': 63000, 'CFC': 40000, 'CAP': 42000, 'CHA': 20000, 'REM': 48000,
+};
+
+/// Orçamento inicial baseado nas estrelas do clube (Fase 8).
+double initialBudgetForStars(int stars) {
+  switch (stars) {
+    case 5:
+      return 90.0;
+    case 4:
+      return 55.0;
+    default:
+      return 30.0;
+  }
+}
+
 Team _buildTeam(ClubInfo c, Random rng) {
   final int base = baseOverallForStars(c.stars);
   final List<Star> stars = kStars[c.shortName] ?? const <Star>[];
@@ -221,13 +242,15 @@ Team _buildTeam(ClubInfo c, Random rng) {
   int n = 1;
 
   for (final s in stars) {
-    squad.add(Player(
+    final p = Player(
       id: '${tid}_p$n',
       name: s.name,
       position: s.position,
       age: s.age,
       overall: s.overall,
-    ));
+    );
+    p.refreshMarketNumbers();
+    squad.add(p);
     n++;
   }
 
@@ -250,18 +273,20 @@ Team _buildTeam(ClubInfo c, Random rng) {
           '${kFirstNames[rng.nextInt(kFirstNames.length)]} ${kLastNames[rng.nextInt(kLastNames.length)]}';
       final int age = 18 + rng.nextInt(17);
       final int overall = (base + rng.nextInt(13) - 6).clamp(55, 92).toInt();
-      squad.add(Player(
+      final p = Player(
         id: '${tid}_p$n',
         name: name,
         position: pos,
         age: age,
         overall: overall,
-      ));
+      );
+      p.refreshMarketNumbers();
+      squad.add(p);
       n++;
     }
   });
 
-  return Team(
+  final team = Team(
     id: tid,
     name: c.name,
     shortName: c.shortName,
@@ -271,7 +296,10 @@ Team _buildTeam(ClubInfo c, Random rng) {
     stars: c.stars,
     baseOverall: base,
     squad: squad,
+    stadiumCapacity: kStadiumCapacity[c.shortName] ?? 30000,
   );
+  team.finances = ClubFinances(balance: initialBudgetForStars(c.stars));
+  return team;
 }
 
 List<Team> createLeague() {

@@ -2,10 +2,13 @@ import 'dart:convert';
 import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'career_mode.dart';
 import 'models.dart';
 import 'data.dart';
+import 'finances.dart';
+import 'marketplace.dart';
 
-class GameState extends ChangeNotifier {
+class GameState extends ChangeNotifier implements GameStateProxy {
   List<Team> teams = [];
   List<Match> matches = [];
   int currentRound = 1;
@@ -14,12 +17,26 @@ class GameState extends ChangeNotifier {
   bool started = false;
   final Random _rng = Random();
 
+  // ---- Fase 9: mercado ----
+  List<Player> freeAgents = [];
+  List<Player> loanedIn = []; // jogadores que o usuário trouxe por empréstimo
+
+  // ---- Fase 10A: carreira ----
+  CareerManager career = CareerManager();
+  int lossStreak = 0;
+
   static const String _saveKey = 'fmbr_save_v1';
 
   int get totalRounds => teams.isEmpty ? 0 : (teams.length - 1) * 2;
 
   Team? get userTeam =>
       userTeamId == null ? null : teams.firstWhere((t) => t.id == userTeamId);
+
+  /// Notifica a UI e persiste o save (uso por módulos externos, ex.: Marketplace).
+  void refresh() {
+    notifyListeners();
+    saveToDisk();
+  }
 
   Team get champion => standings.first;
 
@@ -41,6 +58,21 @@ class GameState extends ChangeNotifier {
 
   bool get seasonFinished => currentRound > totalRounds;
 
+  // ---------- GameStateProxy (Fase 10A) ----------
+
+  @override
+  double get ppg {
+    final t = userTeam;
+    if (t == null || t.played == 0) return 0;
+    return t.points / t.played;
+  }
+
+  @override
+  String get teamName => userTeam?.name ?? 'clube';
+
+  @override
+  double rngDouble() => _rng.nextDouble();
+
   void startGame(String teamId) {
     teams = createLeague();
     for (final t in teams) {
@@ -51,6 +83,11 @@ class GameState extends ChangeNotifier {
     currentRound = 1;
     seasonYear = 2026;
     started = true;
+    lossStreak = 0;
+    freeAgents = Marketplace.generateFreeAgents(_rng);
+    loanedIn = [];
+    career = CareerManager();
+    career.goal = CareerManager.goalForTeam(userTeam!, career.reputation);
     notifyListeners();
     saveToDisk();
   }
@@ -128,6 +165,13 @@ class GameState extends ChangeNotifier {
     _applyEffects(aTeam, aiOnPitch, aGf, aGa, aiScorerIds);
     _updateFanMorale(uTeam, uGf, uGa);
     _updatePressMorale(uTeam, uGf, uGa);
+    // contabiliza gols na temporada (estatísticas p/ mercado - Fase 9)
+    for (final id in userScorerIds) {
+      final idx = userOnPitch.indexWhere((p) => p.id == id);
+      if (idx >= 0) userOnPitch[idx].goalsSeason++;
+    }
+    _trackLossStreak(uGf, uGa);
+    _applyMatchFinances(uTeam, uGf, uGa, isHome: userIsHome);
     final homeTeam = teams.firstWhere((t) => t.id == m.homeId);
     final awayTeam = teams.firstWhere((t) => t.id == m.awayId);
     m.homeGoals = hg;
@@ -136,6 +180,41 @@ class GameState extends ChangeNotifier {
     notifyListeners();
     saveToDisk();
     return msgs;
+  }
+
+  void _trackLossStreak(int gf, int ga) {
+    if (gf < ga) {
+      lossStreak++;
+    } else {
+      lossStreak = 0;
+    }
+  }
+
+  /// Receitas/despesas disparadas por cada jogo do usuário (Fase 8).
+  void _applyMatchFinances(Team t, int gf, int ga, {required bool isHome}) {
+    final won = gf > ga;
+    final drew = gf == ga;
+    // premiação por rodada
+    final prize = ClubFinances.prizeMoney(won, drew);
+    t.finances.credit('Premiação rodada ${t.played + 1}', prize, currentRound);
+    // patrocínio fixo por rodada
+    t.finances.credit('Patrocínio',
+        ClubFinances.sponsorshipPerRound(t.stars), currentRound);
+    if (isHome) {
+      final gate = ClubFinances.ticketRevenue(
+          t.stadiumCapacity, t.stars, t.fanMorale, t.finances.stadiumLevel);
+      t.finances.credit('Bilheteria', gate, currentRound);
+    }
+    // folha salarial rateada pela rodada (1/38 avos por jogo)
+    final wages = double.parse((t.wageBill / 38.0).toStringAsFixed(2));
+    t.finances.debit('Folha salarial', wages, currentRound);
+    if (t.finances.balance < 0) {
+      // crise financeira derruba moral do vestiário
+      for (final p in t.squad) {
+        p.morale = (p.morale - 4).clamp(0, 100).toInt();
+      }
+      t.pressMorale = (t.pressMorale - 5).clamp(0, 100).toInt();
+    }
   }
 
   void _updateFanMorale(Team t, int gf, int ga) {
@@ -187,15 +266,60 @@ class GameState extends ChangeNotifier {
     currentRound++;
     for (final t in teams) {
       for (final p in t.squad) {
-        p.energy = (p.energy + 15).clamp(0, 100).toInt();
+        // Departamento Médico reduz o desgaste e acelera recuperação (Fase 8)
+        final drain = (25 - t.finances.medicalLevel * 5).clamp(10, 25);
+        p.energy = (p.energy + 15 + t.finances.medicalLevel * 3)
+            .clamp(drain, 100)
+            .toInt();
       }
     }
+    // mercado da IA se movimenta a cada rodada (Fase 9)
+    Marketplace.aiMarketActivity(this);
+    // diretoria avalia o técnico (Fase 10A)
+    _careerWarning = career.evaluateRisk(this);
     notifyListeners();
     saveToDisk();
   }
 
+  String? _careerWarning;
+  String? get careerWarning => _careerWarning;
+  void dismissCareerWarning() {
+    _careerWarning = null;
+    notifyListeners();
+  }
+
+  /// Aplica efeitos do CT na evolução: jovens evoluem mais rápido com CT bom.
+  void applyTrainingBonus(Team t, Player p, List<String> msgs) {
+    if (t.finances.trainingLevel == 0) return;
+    if (p.age <= 21 && t.finances.trainingLevel >= 2) {
+      p.xp += 4 * t.finances.trainingLevel;
+    }
+  }
+
   void startNewSeason() {
     seasonYear++;
+    // fim de temporada: premiação por posição + carreira do técnico (Fase 10A)
+    if (userTeam != null && !career.unemployed) {
+      final pos = userPosition;
+      userTeam!.finances.credit(
+          'Premiação fim de temporada',
+          ClubFinances.seasonEndBonus(pos),
+          totalRounds);
+      career.endSeason(pos, userTeam!);
+    }
+    // empréstimos voltam aos clubes de origem
+    loanedIn.removeWhere((p) {
+      p.loanSeasonsLeft--;
+      if (p.loanSeasonsLeft > 0) return false;
+      final parent = teams.where((t) => t.id == p.loanParentClubId).toList();
+      if (parent.isNotEmpty) {
+        parent.first.squad.add(p);
+      } else {
+        freeAgents.add(p);
+      }
+      p.loanParentClubId = null;
+      return true;
+    });
     for (final t in teams) {
       t.points = 0;
       t.wins = 0;
@@ -207,19 +331,55 @@ class GameState extends ChangeNotifier {
       t.fanMorale = 70;
       t.pressMorale = 70;
       for (final p in t.squad) {
+        p.goalsSeason = 0;
         p.age++;
         if (p.age >= 34) {
           p.overall = (p.overall - 2).clamp(55, 94).toInt();
         } else if (p.age >= 32) {
           p.overall = (p.overall - 1).clamp(55, 94).toInt();
         }
+        p.contractYears = (p.contractYears - 1).clamp(0, 9);
+        if (p.contractYears == 0) {
+          // contrato vencido: renova automaticamente com moral baixa se clube pobre
+          p.contractYears = 1;
+          p.morale = (p.morale - 5).clamp(0, 100).toInt();
+        }
+        p.refreshMarketNumbers();
         p.energy = 100;
-        p.morale = 70;
+        p.morale = (p.morale + 10).clamp(0, 100).toInt();
       }
       t.startingIds = autoLineup(t);
     }
+    lossStreak = 0;
     matches = _generateSchedule();
     currentRound = 1;
+    notifyListeners();
+    saveToDisk();
+  }
+
+  /// Investimento em uma área (CT/estádio/médico) - Fase 8.
+  String? investIn(String area) {
+    final t = userTeam;
+    if (t == null) return null;
+    final msg = t.finances.invest(area, currentRound);
+    if (msg != null && area == 'estadio') {
+      t.stadiumCapacity += 10000;
+    }
+    notifyListeners();
+    saveToDisk();
+    return msg;
+  }
+
+  /// Aceita um convite de emprego no meio/fim da temporada (Fase 10A).
+  void acceptCoachJob(String teamId) {
+    final newTeam = teams.firstWhere((t) => t.id == teamId);
+    final offers = career.jobOffers(teams, userTeamId);
+    final offer = offers.firstWhere((o) => o.teamId == teamId,
+        orElse: () => CoachJobOffer(teamId, newTeam.name, newTeam.stars,
+            1.0 + newTeam.stars * 1.4));
+    career.acceptOffer(offer, newTeam);
+    userTeamId = teamId;
+    lossStreak = 0;
     notifyListeners();
     saveToDisk();
   }
@@ -236,6 +396,10 @@ class GameState extends ChangeNotifier {
         'seasonYear': seasonYear,
         'userTeamId': userTeamId,
         'started': started,
+        'lossStreak': lossStreak,
+        'career': career.toJson(),
+        'freeAgents': freeAgents.map((p) => p.toJson()).toList(),
+        'loanedIn': loanedIn.map((p) => p.toJson()).toList(),
       };
       await prefs.setString(_saveKey, jsonEncode(data));
     } catch (e) {
@@ -262,7 +426,24 @@ class GameState extends ChangeNotifier {
       gs.seasonYear = map['seasonYear'];
       gs.userTeamId = map['userTeamId'];
       gs.started = map['started'] ?? false;
-      
+      gs.lossStreak = map['lossStreak'] ?? 0;
+      if (map['career'] != null) {
+        gs.career = CareerManager.fromJson(map['career']);
+      } else if (gs.started && gs.userTeam != null) {
+        // save antigo (pre Fase 10A): inicializa carreira padrao
+        gs.career.goal =
+            CareerManager.goalForTeam(gs.userTeam!, gs.career.reputation);
+      }
+      gs.freeAgents = (map['freeAgents'] as List? ?? [])
+          .map((p) => Player.fromJson(p as Map<String, dynamic>))
+          .toList();
+      gs.loanedIn = (map['loanedIn'] as List? ?? [])
+          .map((p) => Player.fromJson(p as Map<String, dynamic>))
+          .toList();
+      // saves antigos nao tinham agentes livres: gera pool retroativo
+      if (gs.started && gs.freeAgents.isEmpty && gs.loanedIn.isEmpty) {
+        gs.freeAgents = Marketplace.generateFreeAgents(gs._rng);
+      }
       return gs;
     } catch (e) {
       debugPrint('Erro ao carregar: $e');
@@ -279,6 +460,10 @@ class GameState extends ChangeNotifier {
     seasonYear = 2026;
     userTeamId = null;
     started = false;
+    lossStreak = 0;
+    freeAgents = [];
+    loanedIn = [];
+    career = CareerManager();
     notifyListeners();
   }
 

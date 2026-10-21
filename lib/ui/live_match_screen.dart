@@ -666,4 +666,4 @@ class _LiveMatchScreenState extends State<LiveMatchScreen> {
       ],
     );
   }
-};
+}
