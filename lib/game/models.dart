@@ -1,4 +1,5 @@
 import 'dart:math';
+import 'finances.dart';
 
 enum Tactic { retranca, neutro, ofensivo, tudoOuNada }
 enum FanMood { apoio, neutro, protesto }
@@ -30,6 +31,16 @@ class Player {
   int energy;
   int morale;
 
+  // ---- Fase 8/9: Finanças e Mercado ----
+  double salary; // salário em milhões (R$ mi) por temporada
+  double value; // valor de mercado em milhões (R$ mi)
+  int contractYears; // duração do contrato restante (temporadas)
+  double releaseClause; // multa rescisória em milhões
+  bool transferListed; // colocado na lista de transferências
+  int loanSeasonsLeft; // >0 se está emprestado (temporadas restantes)
+  String? loanParentClubId; // clube dono do passe se emprestado
+  int goalsSeason; // gols na temporada atual (para propostas/estatísticas)
+
   Player({
     required this.id,
     required this.name,
@@ -39,9 +50,64 @@ class Player {
     this.xp = 0,
     this.energy = 100,
     this.morale = 70,
+    this.salary = 0.5,
+    this.value = 2.0,
+    this.contractYears = 2,
+    this.releaseClause = 0,
+    this.transferListed = false,
+    this.loanSeasonsLeft = 0,
+    this.loanParentClubId,
+    this.goalsSeason = 0,
   });
 
   static const int xpToNext = 60;
+
+  /// Estimativa de valor de mercado (R$ milhões).
+  static double estimateValue(int overall, int age) {
+    double base;
+    if (overall >= 88) {
+      base = 60.0;
+    } else if (overall >= 84) {
+      base = 35.0;
+    } else if (overall >= 80) {
+      base = 18.0;
+    } else if (overall >= 76) {
+      base = 9.0;
+    } else if (overall >= 72) {
+      base = 4.5;
+    } else if (overall >= 68) {
+      base = 2.0;
+    } else {
+      base = 0.8;
+    }
+    final ageFactor = age <= 21
+        ? 1.3
+        : age <= 26
+            ? 1.15
+            : age <= 30
+                ? 1.0
+                : age <= 33
+                    ? 0.6
+                    : 0.3;
+    return double.parse((base * ageFactor).toStringAsFixed(1));
+  }
+
+  /// Salário anual estimado (R$ milhões).
+  static double estimateSalary(int overall, int age) {
+    final seniority = age >= 30 ? 1.2 : (age <= 22 ? 0.6 : 1.0);
+    final raw = (overall - 55) / 10.0;
+    final v = (raw <= 0 ? 0.1 : raw * raw * 0.9) * seniority;
+    return double.parse(v.clamp(0.1, 12.0).toStringAsFixed(2));
+  }
+
+  /// Recalcula valor/salário/multa a partir de overall e idade atuais.
+  void refreshMarketNumbers() {
+    value = estimateValue(overall, age);
+    salary = estimateSalary(overall, age);
+    if (releaseClause == 0 || releaseClause < value) {
+      releaseClause = double.parse((value * 3).toStringAsFixed(1));
+    }
+  }
 
   double get conditionedOverall {
     final fE = 0.85 + 0.15 * (energy / 100.0);
@@ -84,6 +150,14 @@ class Player {
     'xp': xp,
     'energy': energy,
     'morale': morale,
+    'salary': salary,
+    'value': value,
+    'contractYears': contractYears,
+    'releaseClause': releaseClause,
+    'transferListed': transferListed,
+    'loanSeasonsLeft': loanSeasonsLeft,
+    'loanParentClubId': loanParentClubId,
+    'goalsSeason': goalsSeason,
   };
 
   factory Player.fromJson(Map<String, dynamic> json) => Player(
@@ -95,6 +169,14 @@ class Player {
     xp: json['xp'] ?? 0,
     energy: json['energy'] ?? 100,
     morale: json['morale'] ?? 70,
+    salary: (json['salary'] ?? 0.5).toDouble(),
+    value: (json['value'] ?? 2.0).toDouble(),
+    contractYears: json['contractYears'] ?? 2,
+    releaseClause: (json['releaseClause'] ?? 0.0).toDouble(),
+    transferListed: json['transferListed'] ?? false,
+    loanSeasonsLeft: json['loanSeasonsLeft'] ?? 0,
+    loanParentClubId: json['loanParentClubId'],
+    goalsSeason: json['goalsSeason'] ?? 0,
   );
 }
 
@@ -108,6 +190,11 @@ class Team {
   final int stars;
   final int baseOverall;
   final List<Player> squad;
+
+  /// Capacidade do estádio (pode crescer com investimentos - Fase 8)
+  int stadiumCapacity;
+
+  ClubFinances finances = ClubFinances();
 
   List<String> startingIds = [];
 
@@ -132,9 +219,17 @@ class Team {
     required this.stars,
     required this.baseOverall,
     required this.squad,
+    this.stadiumCapacity = 30000,
   });
 
   int get goalDifference => goalsFor - goalsAgainst;
+
+  /// Força salarial total do elenco (R$ mi / temporada) - Fase 8
+  double get wageBill => squad.fold<double>(0, (s, p) => s + p.salary);
+
+  /// Valor contábil do elenco (soma dos valores de mercado) - Fase 9
+  double get squadMarketValue =>
+      squad.fold<double>(0, (s, p) => s + p.value);
 
   Player playerById(String id) => squad.firstWhere((p) => p.id == id);
 
@@ -179,6 +274,8 @@ class Team {
     'played': played,
     'fanMorale': fanMorale,
     'pressMorale': pressMorale,
+    'stadiumCapacity': stadiumCapacity,
+    'finances': finances.toJson(),
   };
 
   factory Team.fromJson(Map<String, dynamic> json) {
@@ -192,6 +289,7 @@ class Team {
       stars: json['stars'],
       baseOverall: json['baseOverall'],
       squad: (json['squad'] as List).map((p) => Player.fromJson(p)).toList(),
+      stadiumCapacity: json['stadiumCapacity'] ?? 30000,
     );
     t.startingIds = List<String>.from(json['startingIds'] ?? []);
     t.points = json['points'] ?? 0;
@@ -203,6 +301,9 @@ class Team {
     t.played = json['played'] ?? 0;
     t.fanMorale = json['fanMorale'] ?? 70;
     t.pressMorale = json['pressMorale'] ?? 70;
+    if (json['finances'] != null) {
+      t.finances = ClubFinances.fromJson(json['finances']);
+    }
     return t;
   }
 }
