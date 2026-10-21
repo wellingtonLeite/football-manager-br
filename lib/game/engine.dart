@@ -398,7 +398,17 @@ class GameState extends ChangeNotifier {
           _addNews('🌱 Promessa da base: ${y.name} (${y.position}, ${y.age} anos, overall ${y.overall}).');
         }
       }
-      if (!isUser) {
+      if (isUser) {
+        // Contratos vencidos não podem deixar o elenco abaixo do mínimo
+        int promoted = 0;
+        while (t.squad.length < minSquadSize) {
+          t.squad.add(generateYouth(_rng, _neediestPosition(t), t.baseOverall, 2 * t.ctLevel));
+          promoted++;
+        }
+        if (promoted > 0) {
+          _addNews('🌱 A diretoria subiu $promoted jovem(ns) da base para completar o elenco.');
+        }
+      } else {
         while (t.squad.length < 22 && freeAgents.isNotEmpty) {
           _aiSignFreeAgent(t);
         }
