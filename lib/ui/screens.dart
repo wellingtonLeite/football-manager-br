@@ -21,7 +21,10 @@ class TeamSelectScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Escolha seu Clube'), backgroundColor: kGreen),
+      appBar: AppBar(
+        title: const Text('Escolha seu Clube'),
+        backgroundColor: kGreen,
+      ),
       body: ListView.separated(
         itemCount: kClubs.length,
         separatorBuilder: (_, __) => const Divider(height: 1),
@@ -31,18 +34,20 @@ class TeamSelectScreen extends StatelessWidget {
             leading: ClubShield(shortName: c.shortName, size: 32),
             title: Text(
               c.name,
-              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w600,
+              ),
             ),
             subtitle: Text(
               '${c.state} • ${c.stadium} • Téc: ${c.coach}',
               style: const TextStyle(color: Colors.white70, fontSize: 12),
             ),
-            trailing: Text(
-              '★' * c.stars,
-              style: const TextStyle(color: Colors.amber),
-            ),
-            onTap: () =>
-                context.read<GameState>().startGame(c.shortName.toLowerCase()),
+            trailing: Text('★' * c.stars,
+                style: const TextStyle(color: Colors.amber)),
+            onTap: () => context
+                .read<GameState>()
+                .startGame(c.shortName.toLowerCase()),
           );
         },
       ),
@@ -88,7 +93,10 @@ class HomeScreen extends StatelessWidget {
                   const SizedBox(height: 4),
                   Text(
                     'Técnico: ${team.coach}',
-                    style: TextStyle(color: Colors.amber.shade300, fontSize: 13),
+                    style: TextStyle(
+                      color: Colors.amber.shade300,
+                      fontSize: 13,
+                    ),
                   ),
                 ],
               ),
@@ -97,7 +105,9 @@ class HomeScreen extends StatelessWidget {
           const SizedBox(height: 16),
           _menuButton(
             context,
-            game.seasonFinished ? '🏁 Ver Classificação Final' : '⚽ Rodada ${game.currentRound}',
+            game.seasonFinished
+                ? '🏁 Ver Classificação Final'
+                : '⚽ Rodada ${game.currentRound}',
             Colors.green,
             () => Navigator.push(
               context,
@@ -109,17 +119,32 @@ class HomeScreen extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 12),
-          _menuButton(context, '👥 Elenco', Colors.blue,
-              () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SquadScreen()))),
+          _menuButton(
+            context,
+            '👥 Elenco',
+            Colors.blue,
+            () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const SquadScreen()),
+            ),
+          ),
           const SizedBox(height: 12),
-          _menuButton(context, '📊 Classificação', Colors.orange,
-              () => Navigator.push(context, MaterialPageRoute(builder: (_) => const TableScreen()))),
+          _menuButton(
+            context,
+            '📊 Classificação',
+            Colors.orange,
+            () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const TableScreen()),
+            ),
+          ),
         ],
       ),
     );
   }
 
-  Widget _menuButton(BuildContext context, String label, Color color, VoidCallback onTap) {
+  Widget _menuButton(
+      BuildContext context, String label, Color color, VoidCallback onTap) {
     return SizedBox(
       width: double.infinity,
       height: 56,
@@ -127,10 +152,15 @@ class HomeScreen extends StatelessWidget {
         style: ElevatedButton.styleFrom(
           backgroundColor: color,
           foregroundColor: Colors.white,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
         ),
         onPressed: onTap,
-        child: Text(label, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
+        child: Text(
+          label,
+          style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
+        ),
       ),
     );
   }
@@ -145,7 +175,8 @@ class RoundScreen extends StatelessWidget {
     final matches = game.currentRoundMatches;
     final played = game.currentRoundPlayed;
     return Scaffold(
-      appBar: AppBar(title: Text('Rodada ${game.currentRound}'), backgroundColor: kGreen),
+      appBar:
+          AppBar(title: Text('Rodada ${game.currentRound}'), backgroundColor: kGreen),
       body: Column(
         children: [
           Expanded(
@@ -167,7 +198,10 @@ class RoundScreen extends StatelessWidget {
                     played
                         ? 'Ir para Rodada ${game.currentRound + 1} →'
                         : '⚽ Simular Rodada ${game.currentRound}',
-                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ),
               ),
@@ -195,9 +229,11 @@ class RoundScreen extends StatelessWidget {
             ClubShield(shortName: home.shortName, size: 20),
             const SizedBox(width: 6),
             Expanded(
-              child: Text(home.name,
-                  textAlign: TextAlign.right,
-                  style: const TextStyle(color: Colors.white, fontSize: 13)),
+              child: Text(
+                home.name,
+                textAlign: TextAlign.right,
+                style: const TextStyle(color: Colors.white, fontSize: 13),
+              ),
             ),
             Container(
               margin: const EdgeInsets.symmetric(horizontal: 8),
@@ -208,12 +244,17 @@ class RoundScreen extends StatelessWidget {
               ),
               child: Text(
                 m.isPlayed ? '${m.homeGoals} x ${m.awayGoals}' : 'vs',
-                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
             ),
             Expanded(
-              child: Text(away.name,
-                  style: const TextStyle(color: Colors.white, fontSize: 13)),
+              child: Text(
+                away.name,
+                style: const TextStyle(color: Colors.white, fontSize: 13),
+              ),
             ),
             const SizedBox(width: 6),
             ClubShield(shortName: away.shortName, size: 20),
@@ -251,17 +292,25 @@ class SquadScreen extends StatelessWidget {
           dense: true,
           leading: CircleAvatar(
             backgroundColor: _overallColor(p.overall),
-            child: Text('${p.overall}',
-                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            child: Text(
+              '${p.overall}',
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
           ),
           title: Text(p.name, style: const TextStyle(color: Colors.white)),
-          subtitle: Text('${p.position} • ${p.age} anos',
-              style: const TextStyle(color: Colors.white60)),
+          subtitle: Text(
+            '${p.position} • ${p.age} anos',
+            style: const TextStyle(color: Colors.white60),
+          ),
         ));
       }
     }
     return Scaffold(
-      appBar: AppBar(title: Text('Elenco - ${team.name}'), backgroundColor: kGreen),
+      appBar:
+          AppBar(title: Text('Elenco - ${team.name}'), backgroundColor: kGreen),
       body: ListView(children: widgets),
     );
   }
@@ -282,7 +331,8 @@ class TableScreen extends StatelessWidget {
     final game = context.watch<GameState>();
     final table = game.standings;
     return Scaffold(
-      appBar: AppBar(title: const Text('Série A 2026'), backgroundColor: kGreen),
+      appBar:
+          AppBar(title: const Text('Série A 2026'), backgroundColor: kGreen),
       body: ListView.builder(
         itemCount: table.length + 2,
         itemBuilder: (context, index) {
@@ -291,11 +341,29 @@ class TableScreen extends StatelessWidget {
               padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               child: Row(
                 children: [
-                  Expanded(flex: 1, child: Text('#', style: TextStyle(color: Colors.white54))),
-                  Expanded(flex: 5, child: Text('Clube', style: TextStyle(color: Colors.white54))),
-                  Expanded(flex: 1, child: Text('P', textAlign: TextAlign.center, style: TextStyle(color: Colors.white54))),
-                  Expanded(flex: 1, child: Text('J', textAlign: TextAlign.center, style: TextStyle(color: Colors.white54))),
-                  Expanded(flex: 1, child: Text('SG', textAlign: TextAlign.center, style: TextStyle(color: Colors.white54))),
+                  Expanded(
+                      flex: 1,
+                      child: Text('#',
+                          style: TextStyle(color: Colors.white54))),
+                  Expanded(
+                      flex: 5,
+                      child: Text('Clube',
+                          style: TextStyle(color: Colors.white54))),
+                  Expanded(
+                      flex: 1,
+                      child: Text('P',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: Colors.white54))),
+                  Expanded(
+                      flex: 1,
+                      child: Text('J',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: Colors.white54))),
+                  Expanded(
+                      flex: 1,
+                      child: Text('SG',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: Colors.white54))),
                 ],
               ),
             );
@@ -306,9 +374,12 @@ class TableScreen extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('🟩 Verde: Libertadores (G4)', style: TextStyle(color: Colors.white70)),
-                  Text('🟦 Azul: Sul-Americana (5º-6º)', style: TextStyle(color: Colors.white70)),
-                  Text('🟥 Vermelho: Rebaixamento (Z4)', style: TextStyle(color: Colors.white70)),
+                  Text('🟩 Verde: Libertadores (G4)',
+                      style: TextStyle(color: Colors.white70)),
+                  Text('🟦 Azul: Sul-Americana (5º-6º)',
+                      style: TextStyle(color: Colors.white70)),
+                  Text('🟥 Vermelho: Rebaixamento (Z4)',
+                      style: TextStyle(color: Colors.white70)),
                 ],
               ),
             );
@@ -322,9 +393,16 @@ class TableScreen extends StatelessWidget {
               dense: true,
               leading: CircleAvatar(
                 radius: 14,
-                backgroundColor: isUser ? Colors.amber : Colors.grey.shade800,
-                child: Text('${i + 1}',
-                    style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
+                backgroundColor:
+                    isUser ? Colors.amber : Colors.grey.shade800,
+                child: Text(
+                  '${i + 1}',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
               ),
               title: Row(
                 children: [
@@ -335,7 +413,8 @@ class TableScreen extends StatelessWidget {
                       isUser ? '${t.name} (VOCÊ)' : t.name,
                       style: TextStyle(
                         color: Colors.white,
-                        fontWeight: isUser ? FontWeight.bold : FontWeight.normal,
+                        fontWeight:
+                            isUser ? FontWeight.bold : FontWeight.normal,
                       ),
                     ),
                   ),
@@ -344,9 +423,26 @@ class TableScreen extends StatelessWidget {
               trailing: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  SizedBox(width: 32, child: Text('${t.points}', textAlign: TextAlign.center, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
-                  SizedBox(width: 24, child: Text('${t.played}', textAlign: TextAlign.center, style: const TextStyle(color: Colors.white70))),
-                  SizedBox(width: 32, child: Text('${t.goalDifference > 0 ? '+' : ''}${t.goalDifference}', textAlign: TextAlign.center, style: const TextStyle(color: Colors.white70))),
+                  SizedBox(
+                      width: 32,
+                      child: Text('${t.points}',
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold))),
+                  SizedBox(
+                      width: 24,
+                      child: Text('${t.played}',
+                          textAlign: TextAlign.center,
+                          style:
+                              const TextStyle(color: Colors.white70))),
+                  SizedBox(
+                      width: 32,
+                      child: Text(
+                          '${t.goalDifference > 0 ? '+' : ''}${t.goalDifference}',
+                          textAlign: TextAlign.center,
+                          style:
+                              const TextStyle(color: Colors.white70))),
                 ],
               ),
             ),
