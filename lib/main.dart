@@ -7,7 +7,7 @@ import 'ui/audio_service.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   
-  // Tenta carregar o jogo salvo antes de iniciar a UI
+  // Carrega o save automaticamente antes de abrir a UI
   final savedGame = await GameState.loadFromDisk();
   
   runApp(FootballManagerApp(initialState: savedGame));
