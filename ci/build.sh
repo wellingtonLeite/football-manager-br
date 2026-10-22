@@ -40,11 +40,27 @@ PROPS
   fi
 }
 
+# Falhas de rede (ex.: NDK baixado corrompido, "Error on ZipFile unknown archive") são
+# passageiras: limpa o download parcial e tenta de novo, até 3 vezes.
+build_apk() {
+  local sdk="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+  local attempt
+  for attempt in 1 2 3; do
+    if flutter build apk --release; then
+      return 0
+    fi
+    echo "Tentativa $attempt de 3 falhou. Limpando downloads parciais do SDK e tentando de novo..."
+    rm -rf "$sdk/.temp" "$sdk/ndk/28.2.13676358"
+    sleep 10
+  done
+  return 1
+}
+
 case "$phase" in
   build)
     prepare
     flutter analyze --no-fatal-infos --no-fatal-warnings
-    flutter build apk --release
+    build_apk
     ls -la build/app/outputs/flutter-apk/
     ;;
   test)
