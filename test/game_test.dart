@@ -262,11 +262,12 @@ void main() {
 
   test('save e load preservam o estado', () async {
     final g = GameState()..startGame('cru', coachName: 'Save');
+    g.slot = 2; // espaço próprio: salvamentos automáticos de outros testes gravam no espaço 1
     for (int i = 0; i < 10; i++) {
       playDay(g);
     }
     await g.saveToDisk();
-    final loaded = await GameState.loadFromDisk();
+    final loaded = await GameState.loadFromDisk(2);
     expect(loaded, isNotNull);
     expect(loaded!.userTeamId, 'cru');
     expect(loaded.career.name, 'Save');
@@ -538,16 +539,17 @@ void main() {
   test('save corrompido: restaura o backup automático', () async {
     SharedPreferences.setMockInitialValues({});
     final g = GameState()..startGame('fla');
+    g.slot = 3; // espaço próprio: salvamentos automáticos de outros testes gravam no espaço 1
     await g.saveToDisk();
     for (int i = 0; i < 7; i++) {
       playDay(g);
     }
     await g.saveToDisk(); // cria o backup do save anterior
     final prefs = await SharedPreferences.getInstance();
-    expect(prefs.getString('fmbr_save_v2_slot1_bak'), isNotNull);
-    await prefs.setString('fmbr_save_v2_slot1', '{corrompido');
+    expect(prefs.getString('fmbr_save_v2_slot3_bak'), isNotNull);
+    await prefs.setString('fmbr_save_v2_slot3', '{corrompido');
     GameState.loadNotice = null;
-    final restored = await GameState.loadFromDisk(1);
+    final restored = await GameState.loadFromDisk(3);
     expect(restored, isNotNull);
     expect(restored!.userTeam!.name, 'Flamengo');
     expect(GameState.loadNotice, contains('backup'));
