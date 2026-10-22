@@ -20,6 +20,7 @@ const List<(String, String, String, String)> kStaffRoles = [
   ('auxiliar', 'Auxiliar técnico', '🧠', '+0,4 de força em campo por nível'),
   ('preparador', 'Preparador físico', '🏃', '+4 de energia recuperada por dia, por nível'),
   ('olheiro', 'Olheiro-chefe', '🔭', 'revela o potencial de mais jogadores por dia'),
+  ('marketing', 'Diretor de marketing', '📣', 'traz mais propostas de patrocínio, e mais valiosas'),
 ];
 
 /// Fase extra — treino, comissão técnica, categorias de base, olheiros,
@@ -106,6 +107,7 @@ extension GameClub on GameState {
       y.gainXp(2 + t.ctLevel);
     }
     _scoutDaily();
+    _marketingDaily();
   }
 
   // ---------------------------------------------------------------------------

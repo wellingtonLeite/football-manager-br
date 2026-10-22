@@ -10,6 +10,7 @@ import 'package:football_manager_br/game/models.dart';
 import 'package:football_manager_br/ui/audio_service.dart';
 import 'package:football_manager_br/ui/live_match_screen.dart';
 import 'package:football_manager_br/ui/prematch_screen.dart';
+import 'package:football_manager_br/ui/marketing_screen.dart';
 
 /// Joga a data atual inteira (jogo do usuário com placar fixo) e avança.
 void playDay(GameState g, {int hg = 1, int ag = 1}) {
@@ -462,6 +463,85 @@ void main() {
         playDay(g);
       }
     }
+  });
+
+  test('marketing: presidente aceita patrocínio, luvas e parcelas entram no caixa', () {
+    final g = GameState()..startPresident('mir');
+    final t = g.userTeam!;
+    SponsorOffer? offer;
+    for (int i = 0; i < 60 && offer == null && !g.seasonFinished; i++) {
+      playDay(g);
+      offer = t.sponsorOffers.firstOrNull;
+    }
+    expect(offer, isNotNull, reason: 'o marketing deveria trazer propostas');
+    expect(t.sponsors.map((d) => d.slot), containsAll(['master', 'material']));
+    final before = t.balance;
+    expect(g.acceptSponsorOffer(offer!).success, isTrue);
+    expect(t.balance, before + offer.signingBonus);
+    expect(g.sponsorIn(t, offer.slot)?.company, offer.company);
+    do {
+      playDay(g);
+    } while (g.currentDay % 6 != 1);
+    expect(g.ledger.any((e) => e.category == 'Patrocínio' && e.description.startsWith(offer!.company)), isTrue);
+  });
+
+  test('marketing: no modo técnico a diretoria fecha os patrocínios', () {
+    final g = GameState()..startGame('bah');
+    final t = g.userTeam!;
+    for (int i = 0; i < 40; i++) {
+      playDay(g);
+    }
+    expect(t.sponsorOffers, isEmpty);
+    expect(t.sponsors.length, greaterThan(2), reason: 'a diretoria deveria preencher espaços vagos');
+  });
+
+  test('premiações entram durante a temporada: grupos da Libertadores e 1º turno', () {
+    final g = GameState()..startPresident('fla');
+    while (g.currentDay <= (g.stageDays['WIN:2:start'] ?? 0)) {
+      playDay(g);
+    }
+    expect(g.ledger.any((e) => e.description.contains('cota por jogo da fase de grupos')), isTrue);
+    expect(g.ledger.any((e) => e.description.startsWith('Premiação do 1º turno')), isTrue);
+    playSeason(g);
+    expect(g.ledger.any((e) => e.description.startsWith('Premiação final')), isTrue);
+  });
+
+  test('presidente demite o técnico e escolhe o substituto', () {
+    final g = GameState()..startPresident('bah');
+    final t = g.userTeam!;
+    final old = t.coach;
+    expect(g.fireCoach().success, isTrue);
+    expect(g.coachIsInterim(t), isTrue);
+    expect(t.coach, isNot(old));
+    // A crise da torcida também não escolhe ninguém sozinha
+    final choice = g.availableCoaches().first;
+    final before = t.balance;
+    expect(g.hireCoach(choice).success, isTrue);
+    expect(t.coach, choice.name);
+    expect(t.balance, before, reason: 'sem multa ao substituir o interino');
+    g.president!.pending.add(CrisisEvent(kind: 'demitir', title: 't', text: 't', options: const ['a', 'b']));
+    g.resolveCrisis(g.president!.pending.first, 0);
+    expect(g.coachIsInterim(t), isTrue);
+  });
+
+  testWidgets('tela de marketing: contratos e proposta para o presidente', (tester) async {
+    final g = GameState()..startPresident('mir');
+    for (int i = 0; i < 60 && g.userTeam!.sponsorOffers.isEmpty; i++) {
+      playDay(g);
+    }
+    await tester.pumpWidget(MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => AudioService()),
+        ChangeNotifierProvider<GameState>.value(value: g),
+      ],
+      child: const MaterialApp(home: MarketingScreen()),
+    ));
+    await tester.pump();
+    expect(tester.takeException(), isNull);
+    expect(find.textContaining('Patrocínios:'), findsOneWidget);
+    expect(find.text('Aceitar').evaluate().length + find.text('Aceitar e trocar').evaluate().length, greaterThan(0));
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump(const Duration(seconds: 2)); // salvamento automático pendente
   });
 
   testWidgets('jogo ao vivo contra clube estrangeiro (Libertadores)', (tester) async {

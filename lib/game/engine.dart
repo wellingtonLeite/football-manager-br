@@ -17,6 +17,7 @@ part 'engine_stats.dart';
 part 'engine_world.dart';
 part 'engine_club.dart';
 part 'engine_multi.dart';
+part 'engine_marketing.dart';
 
 class GameState extends ChangeNotifier {
   GameMode mode = GameMode.tecnico;
@@ -640,6 +641,7 @@ class GameState extends ChangeNotifier {
     }
     _computeBestOfRound(finished);
     if (finished % 6 == 0) _monthlyFinances(finished ~/ 6);
+    _midSeasonPrizes(finished);
     _expireOffers();
     if (managesClub) _forEachHuman(_aiTransferActivity);
     _aiTransfers();

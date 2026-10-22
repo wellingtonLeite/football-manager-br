@@ -283,6 +283,11 @@ class Team {
   int balance = 0;
   int sponsorMonthly = 0;
   int sponsorRenegotiatedSeason = 0;
+
+  // Marketing: contratos por espaço (clubes de técnicos/presidentes humanos)
+  bool sponsorsManaged = false;
+  List<SponsorDeal> sponsors = [];
+  List<SponsorOffer> sponsorOffers = [];
   int ctLevel = 0;
   int stadiumLevel = 0;
   int medicalLevel = 0;
@@ -397,6 +402,9 @@ class Team {
     'balance': balance,
     'sponsorMonthly': sponsorMonthly,
     'sponsorRenegotiatedSeason': sponsorRenegotiatedSeason,
+    if (sponsorsManaged) 'spm': true,
+    if (sponsors.isNotEmpty) 'spo': sponsors.map((d) => d.toJson()).toList(),
+    if (sponsorOffers.isNotEmpty) 'spf': sponsorOffers.map((o) => o.toJson()).toList(),
     'ctLevel': ctLevel,
     'stadiumLevel': stadiumLevel,
     'medicalLevel': medicalLevel,
@@ -442,6 +450,9 @@ class Team {
     t.balance = json['balance'] ?? 0;
     t.sponsorMonthly = json['sponsorMonthly'] ?? 0;
     t.sponsorRenegotiatedSeason = json['sponsorRenegotiatedSeason'] ?? 0;
+    t.sponsorsManaged = json['spm'] ?? false;
+    t.sponsors = [for (final d in (json['spo'] as List? ?? [])) SponsorDeal.fromJson(d as Map<String, dynamic>)];
+    t.sponsorOffers = [for (final o in (json['spf'] as List? ?? [])) SponsorOffer.fromJson(o as Map<String, dynamic>)];
     t.ctLevel = json['ctLevel'] ?? 0;
     t.stadiumLevel = json['stadiumLevel'] ?? 0;
     t.medicalLevel = json['medicalLevel'] ?? 0;
@@ -616,6 +627,51 @@ class TransferOffer {
 }
 
 /// Resultado de uma negociação (compra, empréstimo, renovação...).
+/// Contrato de patrocínio em vigor.
+class SponsorDeal {
+  final String slot;
+  final String company;
+  int monthly;
+  int seasonsLeft;
+
+  SponsorDeal({required this.slot, required this.company, required this.monthly, required this.seasonsLeft});
+
+  Map<String, dynamic> toJson() => {'s': slot, 'c': company, 'm': monthly, 'y': seasonsLeft};
+
+  factory SponsorDeal.fromJson(Map<String, dynamic> j) =>
+      SponsorDeal(slot: j['s'], company: j['c'], monthly: j['m'], seasonsLeft: j['y']);
+}
+
+/// Proposta trazida pelo departamento de marketing.
+class SponsorOffer {
+  final String slot;
+  final String company;
+  final int monthly;
+  final int seasons;
+  final int signingBonus;
+  final int expiresDay;
+
+  const SponsorOffer({
+    required this.slot,
+    required this.company,
+    required this.monthly,
+    required this.seasons,
+    required this.signingBonus,
+    required this.expiresDay,
+  });
+
+  Map<String, dynamic> toJson() => {'s': slot, 'c': company, 'm': monthly, 'y': seasons, 'b': signingBonus, 'e': expiresDay};
+
+  factory SponsorOffer.fromJson(Map<String, dynamic> j) => SponsorOffer(
+        slot: j['s'],
+        company: j['c'],
+        monthly: j['m'],
+        seasons: j['y'],
+        signingBonus: j['b'],
+        expiresDay: j['e'],
+      );
+}
+
 class TransferResult {
   final bool success;
   final String message;

@@ -30,7 +30,11 @@ extension GameFinance on GameState {
         (clubRecords[home.id] ??= ClubRecord()).bestCrowd = crowd;
       }
     }
-    if (!m.isLeague || home.isForeign) return;
+    if (!m.isLeague) {
+      _cupMatchPrizes(m, home, away, hg, ag);
+      return;
+    }
+    if (home.isForeign) return;
     final div = home.division;
     if (hg > ag) {
       _credit(home, winBonus(div), 'Premiação', 'Vitória sobre ${away.name}');
@@ -40,6 +44,41 @@ extension GameFinance on GameState {
       _credit(home, drawBonus(div), 'Premiação', 'Empate com ${away.name}');
       _credit(away, drawBonus(div), 'Premiação', 'Empate com ${home.name}');
     }
+  }
+
+  /// Copas: cota por jogo na fase de grupos continental e bicho por vitória em todas as copas.
+  void _cupMatchPrizes(Match m, Team home, Team away, int hg, int ag) {
+    final continental = (m.comp == 'LIB' || m.comp == 'SUL') && m.stage == 'G';
+    if (continental) {
+      for (final t in [home, away]) {
+        if (!t.isForeign) _credit(t, cupPrize(m.comp, 'G') ~/ 6, 'Premiação', '${compName(m.comp)}: cota por jogo da fase de grupos');
+      }
+    }
+    final winner = hg > ag ? home : (ag > hg ? away : null);
+    if (winner != null && !winner.isForeign) {
+      final loser = winner == home ? away : home;
+      final bonus = continental ? (m.comp == 'LIB' ? 1500000 : 500000) : winBonus(winner.division);
+      _credit(winner, bonus, 'Premiação', 'Vitória sobre ${loser.name} (${compName(m.comp)})');
+    } else if (winner == null && m.stage == 'G') {
+      for (final t in [home, away]) {
+        if (!t.isForeign) _credit(t, drawBonus(t.division), 'Premiação', 'Empate (${compName(m.comp)})');
+      }
+    }
+  }
+
+  /// Ao fim do 1º turno (rodada 19), 40% da premiação por posição já entra no caixa.
+  void _midSeasonPrizes(int finished) {
+    final day = stageDays['WIN:2:start'];
+    if (day == null || finished != day || stageDays['PAID:MID'] == 1) return;
+    stageDays['PAID:MID'] = 1;
+    for (int div = 1; div <= 3; div++) {
+      final table = standingsOf(div);
+      for (int i = 0; i < table.length; i++) {
+        _credit(table[i], (positionPrize(i + 1, division: div) * 0.4).round(), 'Premiação',
+            'Premiação do 1º turno: ${i + 1}º lugar na ${compName(divisionComp(div))}');
+      }
+    }
+    if (managesClub && userTeam != null) _addNews('💰 Premiação do 1º turno depositada no caixa!');
   }
 
   void _monthlyFinances(int month) {
@@ -58,7 +97,13 @@ extension GameFinance on GameState {
     {
       final isUser = t.id == userTeamId;
       _debit(t, t.payroll, 'Salários', 'Folha salarial (mês $month)');
-      _credit(t, t.sponsorMonthly, 'Patrocínio', 'Patrocínio master (mês $month)');
+      if (t.sponsorsManaged) {
+        for (final d in t.sponsors) {
+          _credit(t, d.monthly, 'Patrocínio', '${d.company} – ${kSponsorSlots[d.slot]?.$1 ?? d.slot} (mês $month)');
+        }
+      } else {
+        _credit(t, t.sponsorMonthly, 'Patrocínio', 'Patrocínio master (mês $month)');
+      }
       _credit(t, tvRights(t), 'Cotas de TV', 'Direitos de transmissão (mês $month)');
       _debit(t, monthlyMaintenance(t), 'Estrutura', 'Manutenção de CT, estádio e DM');
       final coachPay = isUser && mode == GameMode.tecnico ? career.salary : t.coachWage;
@@ -123,7 +168,9 @@ extension GameFinance on GameState {
     final ok = _rng.nextDouble() < chance;
     if (ok) {
       final inc = 0.10 + _rng.nextDouble() * 0.15;
-      t.sponsorMonthly = roundTo(t.sponsorMonthly * (1 + inc), 10000);
+      final master = sponsorIn(t, 'master');
+      if (master != null) master.monthly = roundTo(master.monthly * (1 + inc), 10000);
+      t.sponsorMonthly = master != null ? sponsorTotal(t) : roundTo(t.sponsorMonthly * (1 + inc), 10000);
       msg = 'Novo contrato: ${formatMoney(t.sponsorMonthly)}/mês (+${(inc * 100).round()}%).';
       _addNews('🤝 ${t.name} renova patrocínio master por ${formatMoney(t.sponsorMonthly)}/mês.');
     } else {

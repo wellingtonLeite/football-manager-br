@@ -373,10 +373,6 @@ extension GameCompetitions on GameState {
             Match(round: r + 1, homeId: ids[h], awayId: ids[a], comp: comp, day: day, stage: 'G', group: g),
         ]);
       }
-      for (final id in ids) {
-        final t = teamById(id);
-        if (!t.isForeign) _credit(t, cupPrize(comp, 'G'), 'Premiação', '${compName(comp)}: fase de grupos');
-      }
     });
   }
 
@@ -620,6 +616,7 @@ extension GameCompetitions on GameState {
 
   /// Fim da temporada: prêmios, acesso/rebaixamento, vagas nas copas e histórico.
   void _closeSeason() {
+    _sponsorSeasonEnd();
     final titles = <String, String>{};
     final nextDiv = <String, int>{};
     _lastPositions = {};
@@ -630,7 +627,9 @@ extension GameCompetitions on GameState {
         final t = table[i];
         final pos = i + 1;
         _lastPositions[t.id] = pos;
-        _credit(t, positionPrize(pos, division: div), 'Premiação', 'Premiação: $posº lugar na ${compName(divisionComp(div))}');
+        final share = stageDays['PAID:MID'] == 1 ? 0.6 : 1.0;
+        _credit(t, (positionPrize(pos, division: div) * share).round(), 'Premiação',
+            'Premiação final: $posº lugar na ${compName(divisionComp(div))}');
         if (div > 1 && pos <= 4) {
           _credit(t, promotionBonus(div), 'Premiação', 'Bônus de acesso');
           nextDiv[t.id] = div - 1;

@@ -36,7 +36,16 @@ class HelpScreen extends StatelessWidget {
         'Ingressos e sócio-torcedor: preço alto = mais dinheiro por pessoa, menos público.'),
     ('💰', 'Finanças',
         'Receitas: TV, patrocínio, bilheteria, sócios, premiações e vendas. Despesas: salários, comissão técnica, '
-        'estrutura e compras. Caixa negativo gera juros e derruba a moral.'),
+        'estrutura e compras. Caixa negativo gera juros e derruba a moral. Premiações entram durante a temporada: '
+        'bicho por vitória (liga e copas), cota por jogo na fase de grupos da Libertadores/Sul-Americana, 40% da '
+        'premiação por posição no fim do 1º turno e o restante no fim do campeonato.'),
+    ('📣', 'Marketing',
+        'O departamento de marketing busca patrocinadores para 6 espaços (master, material esportivo, naming rights, '
+        'costas, manga e calção). As luvas entram na hora e as parcelas todo mês. No Modo Presidente, você aceita ou '
+        'recusa cada proposta; no Modo Técnico, a diretoria decide. Um diretor de marketing (Comissão) traz propostas melhores.'),
+    ('👔', 'Técnico (Modo Presidente)',
+        'Ao demitir o técnico, o auxiliar assume como interino e você escolhe o substituto na Presidência, '
+        'vendo a nota e o salário de cada técnico livre.'),
     ('🇧🇷', 'Seleção Brasileira',
         'Técnicos com reputação alta recebem convite da CBF. Na Seleção você convoca até 26 brasileiros de qualquer liga, '
         'joga nas Datas FIFA e disputa a Copa América e a Copa do Mundo.'),

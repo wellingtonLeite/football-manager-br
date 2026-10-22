@@ -21,6 +21,7 @@ import 'help_screen.dart';
 import 'club_screen.dart';
 import 'extra_screens.dart';
 import 'multiplayer_screen.dart';
+import 'marketing_screen.dart';
 
 /// Tela inicial: 3 espaços de save, com backup (exportar/importar).
 class WelcomeScreen extends StatefulWidget {
@@ -477,10 +478,24 @@ class HomeScreen extends StatelessWidget {
           if (game.managesClub) ...[
             const SizedBox(height: 12),
             _menuButton(context, '🏟️ Clube (treino, base, olheiros, ingressos)', Colors.blueGrey, () => _push(context, const ClubScreen())),
+            const SizedBox(height: 12),
+            _menuButton(
+              context,
+              (game.userTeam?.sponsorOffers.isNotEmpty ?? false)
+                  ? '📣 Marketing (${game.userTeam!.sponsorOffers.length} proposta${game.userTeam!.sponsorOffers.length > 1 ? 's' : ''})'
+                  : '📣 Marketing e patrocínios',
+              Colors.pink.shade700,
+              () => _push(context, const MarketingScreen()),
+            ),
           ],
           if (game.mode == GameMode.presidente) ...[
             const SizedBox(height: 12),
-            _menuButton(context, '🏛️ Presidência', Colors.indigo, () => _push(context, const PresidentScreen())),
+            _menuButton(
+              context,
+              game.userTeam != null && game.coachIsInterim(game.userTeam!) ? '🏛️ Presidência (escolha o novo técnico!)' : '🏛️ Presidência',
+              Colors.indigo,
+              () => _push(context, const PresidentScreen()),
+            ),
           ],
           const SizedBox(height: 12),
           Row(

@@ -69,6 +69,31 @@ extension GamePresident on GameState {
 
   int coachFireCost(Team t) => t.coachWage * 3;
 
+  /// Time sem técnico efetivo: o auxiliar comanda até o presidente escolher.
+  bool coachIsInterim(Team t) => t.coach.startsWith('Interino');
+
+  /// Demite o técnico (paga a multa) e deixa o auxiliar como interino.
+  TransferResult fireCoach() {
+    final t = userTeam;
+    if (t == null || mode != GameMode.presidente) {
+      return const TransferResult(false, 'Só o presidente demite o técnico.');
+    }
+    if (coachIsInterim(t)) return const TransferResult(false, 'O time já está com um técnico interino.');
+    final cost = coachFireCost(t);
+    if (t.balance < cost) {
+      return TransferResult(false, 'Caixa insuficiente para a multa do técnico (${formatMoney(cost)}).');
+    }
+    final old = t.coach;
+    _debit(t, cost, 'Comissão técnica', 'Rescisão com $old');
+    t
+      ..coach = 'Interino (auxiliar)'
+      ..coachRating = 2
+      ..coachWage = 0;
+    _addNews('🔄 ${t.name} demite $old. O auxiliar comanda o time até o presidente escolher o novo técnico.');
+    _changed();
+    return TransferResult(true, '$old foi demitido. Escolha o novo técnico na lista.');
+  }
+
   TransferResult hireCoach(CoachOption c) {
     final t = userTeam;
     if (t == null || mode != GameMode.presidente) {
@@ -79,15 +104,18 @@ extension GamePresident on GameState {
       return TransferResult(false, 'Caixa insuficiente para a multa do técnico atual (${formatMoney(cost)}).');
     }
     final old = t.coach;
-    _debit(t, cost, 'Comissão técnica', 'Rescisão com $old');
+    final interim = coachIsInterim(t);
+    if (cost > 0) _debit(t, cost, 'Comissão técnica', 'Rescisão com $old');
     t
       ..coach = c.name
       ..coachRating = c.rating
       ..coachWage = c.wage;
     final p = president!;
     final pos = userPosition;
-    p.popularity = (p.popularity + (pos >= 12 || t.fanMorale < 50 ? 5 : -2)).clamp(0, 100).toInt();
-    _addNews('🔄 ${t.name} demite $old e anuncia ${c.name} como novo técnico.');
+    if (!interim) p.popularity = (p.popularity + (pos >= 12 || t.fanMorale < 50 ? 5 : -2)).clamp(0, 100).toInt();
+    _addNews(interim
+        ? '👔 ${t.name} anuncia ${c.name} como novo técnico.'
+        : '🔄 ${t.name} demite $old e anuncia ${c.name} como novo técnico.');
     _changed();
     return TransferResult(true, '${c.name} é o novo técnico (${'★' * c.rating}).');
   }
@@ -99,6 +127,9 @@ extension GamePresident on GameState {
     if (p == null || t == null) {
       if (career.offers.length < 3 && _rng.nextDouble() < 0.3) _generateJobOffers(1);
       return;
+    }
+    if (coachIsInterim(t) && finishedDay % 3 == 0) {
+      _addNews('👔 O time segue com técnico interino: escolha o novo técnico na Presidência.');
     }
     if (finishedDay % 6 != 3 || p.pending.length >= 2) return;
     final pos = userPosition;
@@ -160,15 +191,10 @@ extension GamePresident on GameState {
     switch (e.kind) {
       case 'demitir':
         if (option == 0) {
-          final coaches = availableCoaches();
-          if (coaches.isEmpty) {
-            msg = 'Não há técnicos livres no momento.';
-          } else {
-            final best = coaches.where((c) => c.wage <= t.coachWage * 2).firstOrNull ?? coaches.last;
-            final r = hireCoach(best);
-            msg = r.message;
-            pop = 4;
-          }
+          // O presidente escolhe o substituto (na Presidência); até lá, o auxiliar é interino
+          final r = fireCoach();
+          msg = r.success ? '${r.message} Vá em Presidência › Técnico.' : r.message;
+          if (r.success) pop = 4;
         } else {
           pop = t.fanMorale < 40 ? -6 : -2;
           msg = 'Você bancou ${t.coach}. A torcida não gostou.';

@@ -86,16 +86,40 @@ class PresidentScreen extends StatelessWidget {
             ),
           sectionTitle('TÉCNICO'),
           Card(
-            color: kCard,
-            child: ListTile(
-              leading: const Text('👔', style: TextStyle(fontSize: 28)),
-              title: Text('${t.coach} ${'★' * t.coachRating}', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-              subtitle: Text('Salário ${formatMoney(t.coachWage)}/mês • multa para demitir ${formatMoney(game.coachFireCost(t))}',
-                  style: const TextStyle(color: Colors.white60)),
-              trailing: TextButton(
-                onPressed: () => _chooseCoach(context, game),
-                child: const Text('Trocar'),
-              ),
+            color: game.coachIsInterim(t) ? Colors.orange.shade900 : kCard,
+            child: Column(
+              children: [
+                ListTile(
+                  leading: const Text('👔', style: TextStyle(fontSize: 28)),
+                  title: Text('${t.coach} ${'★' * t.coachRating}', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                  subtitle: Text(
+                    game.coachIsInterim(t)
+                        ? 'O auxiliar comanda o time. Escolha o novo técnico!'
+                        : 'Salário ${formatMoney(t.coachWage)}/mês • multa para demitir ${formatMoney(game.coachFireCost(t))}',
+                    style: const TextStyle(color: Colors.white70),
+                  ),
+                ),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    if (!game.coachIsInterim(t))
+                      TextButton(
+                        onPressed: () async {
+                          final ok = await confirmDialog(context, 'Demitir ${t.coach}?',
+                              'O clube paga ${formatMoney(game.coachFireCost(t))} de multa e o auxiliar assume até você escolher o substituto.');
+                          if (!ok || !context.mounted) return;
+                          showResult(context, game.fireCoach());
+                        },
+                        child: const Text('Demitir', style: TextStyle(color: Colors.redAccent)),
+                      ),
+                    TextButton(
+                      onPressed: () => _chooseCoach(context, game),
+                      child: Text(game.coachIsInterim(t) ? 'Escolher novo técnico' : 'Trocar por outro'),
+                    ),
+                    const SizedBox(width: 8),
+                  ],
+                ),
+              ],
             ),
           ),
           sectionTitle('PATRIMÔNIO DO CLUBE'),
@@ -152,10 +176,13 @@ class PresidentScreen extends StatelessWidget {
                       subtitle: Text('Pede ${formatMoney(c.wage)}/mês', style: const TextStyle(color: Colors.white60)),
                       onTap: () async {
                         Navigator.pop(ctx);
+                        final t = game.userTeam!;
                         final ok = await confirmDialog(
                           context,
                           'Contratar ${c.name}?',
-                          'O técnico atual sai e o clube paga ${formatMoney(game.coachFireCost(game.userTeam!))} de multa.',
+                          game.coachIsInterim(t)
+                              ? 'Salário de ${formatMoney(c.wage)}/mês.'
+                              : 'O técnico atual sai e o clube paga ${formatMoney(game.coachFireCost(t))} de multa. Salário de ${formatMoney(c.wage)}/mês.',
                         );
                         if (!ok || !context.mounted) return;
                         showResult(context, game.hireCoach(c));
