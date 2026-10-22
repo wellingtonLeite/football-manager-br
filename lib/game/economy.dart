@@ -76,6 +76,23 @@ int monthlyMaintenance(Team t) =>
 
 int ticketPrice(Team t) => 30 + 12 * t.stars;
 
+/// Quanto o clube paga em relação ao salário "de mercado" do atleta: clubes pequenos pagam menos
+/// (e contratam jogadores menos caros); os maiores pagam um prêmio para atrair e manter craques.
+double wageTier(int stars) => const [0.35, 0.45, 0.6, 0.8, 1.0, 1.25][stars.clamp(0, 5)];
+
+/// Salário "justo" de [p] para o porte do clube [t] (sem clube: valor de mercado cheio).
+int fairWageFor(Team? t, Player p) => (Player.fairWage(p.overall, p.age) * (t == null ? 1.0 : wageTier(t.stars))).round();
+
+/// Custos de dia de jogo (segurança, limpeza, arbitragem, operação): fração da bilheteria.
+const double kMatchdayCostRate = 0.28;
+
+/// Despesas operacionais mensais (administração, logística, viagens, departamentos):
+/// quanto maior o clube, maior a fatia das receitas fixas que ele gasta.
+int operatingCosts(Team t) {
+  final rate = 0.10 + 0.07 * t.stars.clamp(0, 5);
+  return (rate * (tvRights(t) + t.sponsorMonthly)).round();
+}
+
 /// Público pagante de um jogo em casa.
 int attendance(Team t, int position, {bool bigGame = false}) {
   double occ = 0.30 + t.fanMorale / 200.0 + 0.05 * t.stars;

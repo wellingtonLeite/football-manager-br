@@ -23,8 +23,9 @@ extension GameFinance on GameState {
     if (!home.isForeign) {
       final raw = attendance(home, positionOf(home.id), bigGame: !m.isLeague && m.stage != 'G');
       final crowd = min(home.effectiveCapacity, (raw * ticketDemand(home)).round());
-      _credit(home, crowd * ticketPriceFor(home), 'Bilheteria',
-          'Bilheteria vs ${away.name} ($crowd pagantes)');
+      final gate = crowd * ticketPriceFor(home);
+      _credit(home, (gate * (1 - kMatchdayCostRate)).round(), 'Bilheteria',
+          'Bilheteria vs ${away.name} ($crowd pagantes, líquida de custos de jogo)');
       final rec = clubRecords[home.id];
       if (home.id == userTeamId && (rec == null || crowd > rec.bestCrowd)) {
         (clubRecords[home.id] ??= ClubRecord()).bestCrowd = crowd;
@@ -106,6 +107,7 @@ extension GameFinance on GameState {
       }
       _credit(t, tvRights(t), 'Cotas de TV', 'Direitos de transmissão (mês $month)');
       _debit(t, monthlyMaintenance(t), 'Estrutura', 'Manutenção de CT, estádio e DM');
+      _debit(t, operatingCosts(t), 'Despesas operacionais', 'Administração, logística, viagens e departamentos');
       final coachPay = isUser && mode == GameMode.tecnico ? career.salary : t.coachWage;
       _debit(t, coachPay, 'Comissão técnica', 'Salário do técnico');
       if (isUser && mode == GameMode.tecnico) career.earnings += career.salary;

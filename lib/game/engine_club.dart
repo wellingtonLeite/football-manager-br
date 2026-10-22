@@ -144,7 +144,7 @@ extension GameClub on GameState {
     academy.remove(y);
     y
       ..contractYears = 3
-      ..wage = Player.fairWage(y.overall, y.age);
+      ..wage = fairWageFor(t, y);
     t.squad.add(y);
     _addNews('🌱 ${y.name} (${y.age} anos) sobe da base para o profissional!');
     _changed();

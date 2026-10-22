@@ -83,7 +83,7 @@ extension GameMarket on GameState {
   /// Salário mensal que o atleta pede para assinar com o clube do usuário.
   int wageDemand(Player p, {Team? from}) {
     final user = userTeam;
-    double d = max(p.wage, Player.fairWage(p.overall, p.age)).toDouble();
+    double d = max(p.wage, fairWageFor(user, p)).toDouble();
     if (from == null) {
       d *= 0.9;
     } else if (from.isForeign && from.baseOverall >= 82) {
@@ -96,7 +96,7 @@ extension GameMarket on GameState {
 
   /// Salário pedido para renovar contrato.
   int renewalDemand(Player p) {
-    final base = max(p.wage, Player.fairWage(p.overall, p.age));
+    final base = max(p.wage, fairWageFor(userTeam, p));
     return roundTo(base * (p.morale >= 70 ? 1.05 : 1.15), 1000);
   }
 
@@ -450,7 +450,7 @@ extension GameMarket on GameState {
       ..listed = false
       ..askingPrice = 0
       ..contractYears = max(2, p.contractYears)
-      ..wage = max(p.wage, Player.fairWage(p.overall, p.age));
+      ..wage = max(p.wage, fairWageFor(buyer, p));
     buyer.squad.add(p);
     incomingOffers.removeWhere((x) => x.playerId == p.id);
     _addNews('💸 ${p.name} vendido ao ${buyer.name} por ${formatMoney(o.amount)}.');
@@ -514,7 +514,7 @@ extension GameMarket on GameState {
     freeAgents.remove(pick);
     pick
       ..contractYears = 1 + _rng.nextInt(3)
-      ..wage = Player.fairWage(pick.overall, pick.age)
+      ..wage = fairWageFor(t, pick)
       ..morale = 70;
     t.squad.add(pick);
   }

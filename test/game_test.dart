@@ -524,6 +524,81 @@ void main() {
     expect(g.coachIsInterim(t), isTrue);
   });
 
+  test('save: versão atual, save antigo (v2) abre e save de versão futura é recusado', () {
+    final g = GameState()..startGame('fla');
+    final map = g.toJson();
+    expect(map['version'], kSaveVersion);
+    final old = Map<String, dynamic>.from(map)..['version'] = 2;
+    final loaded = GameState.fromJson(old);
+    expect(loaded.userTeam!.name, 'Flamengo');
+    final future = Map<String, dynamic>.from(map)..['version'] = kSaveVersion + 1;
+    expect(() => GameState.fromJson(future), throwsA(isA<SaveTooNewException>()));
+  });
+
+  test('save corrompido: restaura o backup automático', () async {
+    SharedPreferences.setMockInitialValues({});
+    final g = GameState()..startGame('fla');
+    await g.saveToDisk();
+    for (int i = 0; i < 7; i++) {
+      playDay(g);
+    }
+    await g.saveToDisk(); // cria o backup do save anterior
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.getString('fmbr_save_v2_slot1_bak'), isNotNull);
+    await prefs.setString('fmbr_save_v2_slot1', '{corrompido');
+    GameState.loadNotice = null;
+    final restored = await GameState.loadFromDisk(1);
+    expect(restored, isNotNull);
+    expect(restored!.userTeam!.name, 'Flamengo');
+    expect(GameState.loadNotice, contains('backup'));
+    GameState.loadNotice = null;
+  });
+
+  test('central de avisos: reúne pendências do presidente', () {
+    final g = GameState()..startPresident('bah');
+    expect(g.alerts.where((a) => a.target == AlertTarget.president), isEmpty);
+    g.fireCoach();
+    g.president!.pending.add(CrisisEvent(kind: 'reforco', title: 't', text: 't', options: const ['a', 'b']));
+    final targets = g.alerts.map((a) => a.target).toList();
+    expect(targets.where((x) => x == AlertTarget.president).length, 2);
+    expect(g.alerts.first.urgent, isTrue);
+    g.userTeam!.balance = -1000000;
+    expect(g.alerts.any((a) => a.target == AlertTarget.finances), isTrue);
+  });
+
+  test('partida: pênaltis acontecem e a média de gols continua realista', () {
+    final g = GameState()..startGame('fla');
+    final m = g.userMatchCurrent!;
+    final home = g.teamById(m.homeId);
+    final away = g.teamById(m.awayId);
+    g.ensureUserLineup();
+    int goals = 0, pens = 0, penGoals = 0;
+    const games = 600;
+    for (int i = 0; i < games; i++) {
+      final ev = g.generateChunk(
+        match: m, minFrom: 1, minTo: 91, homeTactic: Tactic.neutro, awayTactic: Tactic.neutro,
+        homeStrength: g.teamStrength(home, home.startingPlayers) + g.homeAdvantage(home),
+        awayStrength: g.teamStrength(away, away.startingPlayers),
+        homeOnPitch: home.startingPlayers, awayOnPitch: away.startingPlayers,
+      );
+      goals += ev.where((e) => e.type == 'GOAL').length;
+      pens += ev.where((e) => e.text.contains('Pênalti') || e.text.contains('pênalti')).length;
+      penGoals += ev.where((e) => e.type == 'GOAL' && e.text.contains('Pênalti convertido')).length;
+    }
+    final avg = goals / games;
+    expect(pens, greaterThan(0));
+    expect(penGoals, lessThan(goals));
+    expect(avg, inInclusiveRange(2.0, 3.6), reason: 'média de gols por jogo $avg');
+    // artilheiro ponderado: atacantes marcam bem mais que zagueiros
+    final byPos = <String, int>{};
+    for (int i = 0; i < 4000; i++) {
+      final p = g.pickScorer(home.startingPlayers);
+      byPos[p.position] = (byPos[p.position] ?? 0) + 1;
+    }
+    expect(byPos['ATA']!, greaterThan(byPos['ZAG'] ?? 0));
+    expect(byPos['GOL'] ?? 0, 0);
+  });
+
   testWidgets('tela de marketing: contratos e proposta para o presidente', (tester) async {
     final g = GameState()..startPresident('mir');
     for (int i = 0; i < 60 && g.userTeam!.sponsorOffers.isEmpty; i++) {

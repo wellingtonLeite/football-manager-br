@@ -18,6 +18,43 @@ part 'engine_world.dart';
 part 'engine_club.dart';
 part 'engine_multi.dart';
 part 'engine_marketing.dart';
+part 'engine_alerts.dart';
+
+/// Versão do formato do save. Aumente ao mudar a estrutura e acrescente um passo em [migrateSave].
+const int kSaveVersion = 3;
+
+/// Save gravado por uma versão do jogo mais nova que esta.
+class SaveTooNewException implements Exception {
+  final int version;
+  SaveTooNewException(this.version);
+
+  @override
+  String toString() => 'Este save é da versão $version do jogo, mais nova que a instalada. Atualize o aplicativo.';
+}
+
+/// Leva um save antigo, passo a passo, até a versão atual. Cada passo só mexe no que mudou naquela versão.
+Map<String, dynamic> migrateSave(Map<String, dynamic> raw) {
+  final map = Map<String, dynamic>.from(raw);
+  var v = (map['version'] as num?)?.toInt() ?? 1;
+  if (v > kSaveVersion) throw SaveTooNewException(v);
+  while (v < kSaveVersion) {
+    switch (v) {
+      case 1:
+      case 2:
+        // v2 -> v3: patrocínios por contrato, premiação do 1º turno e técnico interino.
+        // Todos os campos novos têm valor padrão ao carregar, então não há dado a converter;
+        // saves antigos pagam a premiação final inteira (100%) por não terem o marcador do 1º turno.
+        break;
+    }
+    v++;
+  }
+  map['version'] = kSaveVersion;
+  return map;
+}
+
+/// Gols de pênalti esperados por time por jogo (compensados no jogo corrido) e chance por minuto.
+const double kPenaltyGoalRate = 0.13;
+const double kPenaltyChancePerMinute = 0.0019;
 
 class GameState extends ChangeNotifier {
   GameMode mode = GameMode.tecnico;
@@ -736,7 +773,7 @@ class GameState extends ChangeNotifier {
         if (t.isForeign || p.contractYears > 0) continue;
         if (!isUser && p.age < 33 && p.overall >= avg - 4) {
           p.contractYears = 1 + _rng.nextInt(3);
-          p.wage = max(p.wage, Player.fairWage(p.overall, p.age));
+          p.wage = max(p.wage, fairWageFor(t, p));
           continue;
         }
         t.squad.remove(p);
@@ -839,7 +876,7 @@ class GameState extends ChangeNotifier {
   }
 
   Map<String, dynamic> toJson() => {
-    'version': 2,
+    'version': kSaveVersion,
     'mode': mode.name,
     'teams': teams.map((t) => t.toJson()).toList(),
     'foreignTeams': foreignTeams.map((t) => t.toJson()).toList(),
@@ -878,7 +915,8 @@ class GameState extends ChangeNotifier {
     'difficulty': difficulty,
   };
 
-  static GameState fromJson(Map<String, dynamic> map) {
+  static GameState fromJson(Map<String, dynamic> raw) {
+    final map = migrateSave(raw);
     final gs = GameState();
     List<T> list<T>(String key, T Function(Map<String, dynamic>) f) =>
         (map[key] as List? ?? []).map((e) => f(e as Map<String, dynamic>)).toList();
@@ -936,6 +974,11 @@ class GameState extends ChangeNotifier {
   int slot = 1;
 
   static String _slotKey(int slot) => 'fmbr_save_v2_slot$slot';
+  static String _backupKey(int slot) => 'fmbr_save_v2_slot${slot}_bak';
+
+  /// Aviso para a tela inicial (ex.: save restaurado do backup automático); lido uma vez.
+  static String? loadNotice;
+  static final Map<int, String> _lastBackupMark = {};
   static String _metaKey(int slot) => 'fmbr_meta_slot$slot';
   static const String _lastSlotKey = 'fmbr_last_slot';
   static const int slotCount = 3;
@@ -957,6 +1000,14 @@ class GameState extends ChangeNotifier {
       final prefs = await SharedPreferences.getInstance();
       // A codificação (a parte mais pesada) roda fora da thread da interface
       final raw = await compute(jsonEncode, toJson());
+      // Backup automático: guarda o save anterior a cada ~6 datas (e na 1ª gravação de cada sessão),
+      // para recuperar a carreira se um save novo sair corrompido.
+      final mark = '$seasonYear:${currentDay ~/ 6}';
+      if (_lastBackupMark[slot] != mark) {
+        final previous = prefs.getString(_slotKey(slot));
+        if (previous != null) await prefs.setString(_backupKey(slot), previous);
+        _lastBackupMark[slot] = mark;
+      }
       await prefs.setString(_slotKey(slot), raw);
       await prefs.setString(_metaKey(slot), jsonEncode(_meta()));
       await prefs.setInt(_lastSlotKey, slot);
@@ -978,7 +1029,30 @@ class GameState extends ChangeNotifier {
       final s = slot ?? prefs.getInt(_lastSlotKey) ?? 1;
       final raw = prefs.getString(_slotKey(s));
       if (raw == null) return null;
-      final gs = fromJson(jsonDecode(raw) as Map<String, dynamic>)..slot = s;
+      GameState? gs;
+      try {
+        gs = fromJson(jsonDecode(raw) as Map<String, dynamic>)..slot = s;
+      } on SaveTooNewException catch (e) {
+        loadNotice = e.toString();
+        return null;
+      } catch (e) {
+        debugPrint('Save do espaço $s ilegível: $e');
+        // Tenta o backup automático antes de desistir da carreira
+        final bak = prefs.getString(_backupKey(s));
+        if (bak != null) {
+          try {
+            gs = fromJson(jsonDecode(bak) as Map<String, dynamic>)..slot = s;
+            loadNotice = 'O save do espaço $s estava com problema. Restauramos o backup automático (poucas datas atrás).';
+            await prefs.setString(_slotKey(s), bak);
+          } catch (e2) {
+            debugPrint('Backup também ilegível: $e2');
+          }
+        }
+        if (gs == null) {
+          loadNotice = 'Não foi possível abrir o save do espaço $s ($e). O arquivo foi mantido: exporte-o antes de apagar.';
+          return null;
+        }
+      }
       if (prefs.getString(_metaKey(s)) == null) await prefs.setString(_metaKey(s), jsonEncode(gs._meta()));
       return gs;
     } catch (e) {
@@ -1079,6 +1153,7 @@ class GameState extends ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_slotKey(slot));
     await prefs.remove(_metaKey(slot));
+    await prefs.remove(_backupKey(slot));
     await prefs.remove('fmbr_save_v1');
     final s = slot;
     _replaceWith(GameState());
@@ -1337,14 +1412,36 @@ class GameState extends ChangeNotifier {
         hf: home.formation, af: away.formation, homeTrain: trainingAttack(home) - trainingDefense(away), awayTrain: trainingAttack(away) - trainingDefense(home));
     final events = <MatchEvent>[];
     if (homeOnPitch.isEmpty || awayOnPitch.isEmpty) return events;
+    // Parte dos gols vem de pênaltis (abaixo): desconta do jogo corrido para manter a média de gols
+    l[0] = max(0.2, l[0] - kPenaltyGoalRate);
+    l[1] = max(0.2, l[1] - kPenaltyGoalRate);
     for (int min = minFrom; min < minTo; min++) {
       if (_rng.nextDouble() < l[0] / 90.0) {
         final s = pickScorer(homeOnPitch);
-        events.add(MatchEvent(minute: min, type: 'GOAL', teamId: home.id, playerId: s.id, text: "⚽ GOL do ${home.name}! ${s.name} marca aos $min'!"));
+        events.add(MatchEvent(minute: min, type: 'GOAL', teamId: home.id, playerId: s.id, text: _goalText(home, s, min)));
       }
       if (_rng.nextDouble() < l[1] / 90.0) {
         final s = pickScorer(awayOnPitch);
-        events.add(MatchEvent(minute: min, type: 'GOAL', teamId: away.id, playerId: s.id, text: "⚽ GOL do ${away.name}! ${s.name} marca aos $min'!"));
+        events.add(MatchEvent(minute: min, type: 'GOAL', teamId: away.id, playerId: s.id, text: _goalText(away, s, min)));
+      }
+      // Pênalti: cobra o melhor batedor; o goleiro adversário também pesa
+      for (final isHome in [true, false]) {
+        if (_rng.nextDouble() >= kPenaltyChancePerMinute * (isHome ? l[0] : l[1]) / 1.3) continue;
+        final t = isHome ? home : away;
+        final taker = _penaltyTaker(isHome ? homeOnPitch : awayOnPitch);
+        if (taker == null) continue;
+        final keeper = (isHome ? awayOnPitch : homeOnPitch).where((x) => x.position == 'GOL').firstOrNull;
+        final convert = (0.76 + (taker.overall - 75) / 150 - ((keeper?.overall ?? 70) - 75) / 300).clamp(0.55, 0.92);
+        if (_rng.nextDouble() < convert) {
+          events.add(MatchEvent(minute: min, type: 'GOAL', teamId: t.id, playerId: taker.id,
+              text: "⚽ GOL do ${t.name}! Pênalti convertido por ${taker.name} aos $min'!"));
+        } else {
+          final defended = keeper != null && _rng.nextDouble() < 0.6;
+          events.add(MatchEvent(minute: min, type: 'CHANCE', teamId: t.id, playerId: taker.id,
+              text: defended
+                  ? "🧤 Pênalti para o ${t.name}: ${taker.name} bate e ${keeper.name} defende!"
+                  : "😱 Pênalti para o ${t.name}: ${taker.name} chuta na trave e perde!"));
+        }
       }
       if (_rng.nextDouble() < 0.05) {
         final bool h = _rng.nextBool();
@@ -1377,12 +1474,38 @@ class GameState extends ChangeNotifier {
     return events;
   }
 
+  /// Quem faz o gol: atacantes e meias marcam mais, e os melhores (overall) bem mais que os fracos.
   Player pickScorer(List<Player> onPitch) {
-    final att = onPitch.where((p) => p.position == 'ATA' || p.position == 'MEI').toList();
-    final pool = att.isEmpty ? List<Player>.from(onPitch) : att;
-    pool.sort((a, b) => b.overall.compareTo(a.overall));
-    final n = pool.length < 5 ? pool.length : 5;
-    return pool[_rng.nextInt(n)];
+    final p = _weighted(onPitch, (x) => GameStats._attackW(x.position) * pow(x.overall / 70.0, 4).toDouble());
+    return p ?? onPitch[_rng.nextInt(onPitch.length)];
+  }
+
+  /// Melhor cobrador de pênalti em campo (atacantes e meias).
+  Player? _penaltyTaker(List<Player> onPitch) {
+    final pool = onPitch.where((x) => x.position == 'ATA' || x.position == 'MEI').toList();
+    final list = pool.isEmpty ? onPitch.where((x) => x.position != 'GOL').toList() : pool;
+    if (list.isEmpty) return null;
+    list.sort((a, b) => b.overall.compareTo(a.overall));
+    return list.first;
+  }
+
+  /// Narração do gol conforme a posição de quem marcou.
+  String _goalText(Team t, Player s, int min) {
+    final r = _rng.nextDouble();
+    final String how;
+    switch (s.position) {
+      case 'ZAG':
+        how = 'sobe mais que todos e cabeceia, após escanteio';
+      case 'LAT':
+        how = r < 0.5 ? 'aparece na área e finaliza' : 'bate de primeira, cruzado';
+      case 'VOL':
+        how = r < 0.6 ? 'arrisca de fora da área e acerta o ângulo' : 'chega firme e empurra para as redes';
+      case 'MEI':
+        how = r < 0.35 && s.overall >= 75 ? 'cobra falta com perfeição' : (r < 0.7 ? 'bate de fora da área' : 'finaliza com categoria');
+      default:
+        how = r < 0.25 ? 'cabeceia para as redes' : (r < 0.5 ? 'toca na saída do goleiro' : (r < 0.75 ? 'chuta cruzado' : 'finaliza de primeira'));
+    }
+    return "⚽ GOL do ${t.name}! ${s.name} $how aos $min'!";
   }
 
   void _applyResult(Team home, Team away, int hg, int ag) {

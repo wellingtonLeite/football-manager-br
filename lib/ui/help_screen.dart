@@ -17,6 +17,9 @@ class HelpScreen extends StatelessWidget {
     ('⚽', 'Antes do jogo',
         'Em "Preparar o jogo" escolha a formação (4-4-2, 4-3-3...), a tática e os 11 titulares. '
         'Jogadores cansados (⚡ baixo), lesionados (🚑) ou suspensos (🟥) devem ficar de fora.'),
+    ('🔔', 'Avisos',
+        'Na tela inicial, o painel de avisos reúne o que espera uma ação sua (propostas, decisões do presidente, '
+        'titulares lesionados, janela fechando, caixa negativo). Toque num aviso para ir direto à tela certa.'),
     ('🟨', 'Cartões',
         'Três amarelos ou um vermelho suspendem o jogador da próxima partida. '
         'Com um a menos em campo, o time perde força.'),

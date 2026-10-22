@@ -962,6 +962,12 @@ Team buildTeam(ClubInfo c, Random rng) {
     country: c.country,
     coachRating: c.coachRating,
   );
+  // Salários proporcionais ao porte do clube (clubes brasileiros)
+  if (!foreign) {
+    for (final p in team.squad) {
+      p.wage = roundTo(p.wage * wageTier(c.stars), 1000);
+    }
+  }
   team.balance = initialBudget(c.stars);
   team.sponsorMonthly = baseSponsor(c.stars);
   team.coachWage = coachSalary(c.stars, 50);

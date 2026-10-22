@@ -104,7 +104,7 @@ extension GameWorld on GameState {
       buyer.balance -= fee;
       seller.balance += fee;
       p
-        ..wage = max(p.wage, Player.fairWage(p.overall, p.age))
+        ..wage = max(p.wage, fairWageFor(buyer, p))
         ..contractYears = 2 + _rng.nextInt(3)
         ..listed = false;
       _settleSellOn(p, fee);

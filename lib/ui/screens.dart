@@ -34,6 +34,21 @@ class WelcomeScreen extends StatefulWidget {
 class _WelcomeScreenState extends State<WelcomeScreen> {
   late Future<List<Map<String, dynamic>?>> _slots = GameState.slotSummaries();
 
+  @override
+  void initState() {
+    super.initState();
+    _showLoadNotice();
+  }
+
+  void _showLoadNotice() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final msg = GameState.loadNotice;
+      if (msg == null || !mounted) return;
+      GameState.loadNotice = null;
+      showResult(context, TransferResult(false, msg));
+    });
+  }
+
   void _refresh() {
     if (!mounted) return;
     setState(() {
@@ -46,6 +61,11 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
     context.read<AudioService>().playButton();
     try {
       await game.switchSlot(slot);
+      final notice = GameState.loadNotice;
+      if (notice != null && mounted) {
+        GameState.loadNotice = null;
+        showResult(context, TransferResult(true, notice));
+      }
     } catch (e) {
       // Nunca falhar em silêncio: mostra o erro para o jogador
       if (mounted) showResult(context, TransferResult(false, 'Não foi possível abrir o espaço $slot: $e'));
@@ -388,6 +408,52 @@ void showSoundSettings(BuildContext context) {
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
 
+  /// Central de avisos: pendências que esperam uma ação, cada uma levando à tela certa.
+  List<Widget> _alertsCard(BuildContext context, GameState game) {
+    final alerts = game.alerts;
+    if (alerts.isEmpty) return const [];
+    Widget screenFor(AlertTarget t) => switch (t) {
+          AlertTarget.market => const MarketplaceScreen(),
+          AlertTarget.marketing => const MarketingScreen(),
+          AlertTarget.president => const PresidentScreen(),
+          AlertTarget.squad => const SquadScreen(),
+          AlertTarget.finances => const FinancesScreen(),
+          AlertTarget.career => const CareerScreen(),
+        };
+    final urgent = alerts.any((a) => a.urgent);
+    return [
+      const SizedBox(height: 8),
+      Card(
+        color: urgent ? Colors.deepOrange.shade900 : kCard,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+              child: Text('🔔 Avisos (${alerts.length})',
+                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            ),
+            for (final a in alerts.take(5))
+              ListTile(
+                dense: true,
+                visualDensity: VisualDensity.compact,
+                leading: Text(a.icon, style: const TextStyle(fontSize: 20)),
+                title: Text(a.text, style: const TextStyle(color: Colors.white, fontSize: 13)),
+                trailing: const Icon(Icons.chevron_right, color: Colors.white54),
+                onTap: () => _push(context, screenFor(a.target)),
+              ),
+            if (alerts.length > 5)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                child: Text('+ ${alerts.length - 5} aviso(s) menos urgentes',
+                    style: const TextStyle(color: Colors.white54, fontSize: 11)),
+              ),
+          ],
+        ),
+      ),
+    ];
+  }
+
   @override
   Widget build(BuildContext context) {
     final game = context.watch<GameState>();
@@ -444,19 +510,7 @@ class HomeScreen extends StatelessWidget {
             GameMode.presidente => _presidentCard(game, team),
             GameMode.jogador => _playerCard(game, team),
           },
-          if (game.mode == GameMode.presidente && (game.president?.pending.isNotEmpty ?? false)) ...[
-            const SizedBox(height: 8),
-            Card(
-              color: Colors.deepOrange.shade900,
-              child: ListTile(
-                leading: const Text('🏛️', style: TextStyle(fontSize: 24)),
-                title: Text('${game.president!.pending.length} decisão(ões) pendente(s)',
-                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                subtitle: const Text('Toque para resolver na Presidência', style: TextStyle(color: Colors.white70)),
-                onTap: () => _push(context, const PresidentScreen()),
-              ),
-            ),
-          ],
+          ..._alertsCard(context, game),
           const SizedBox(height: 16),
           dayButton,
           const SizedBox(height: 12),
